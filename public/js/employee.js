@@ -156,7 +156,7 @@ async function layarDepan() {
     if (signal.aborted) return;
     if (!stream) stream = await openCamera(video);
     if (!siap.jumlah) {
-      statusKamera.textContent = 'Hadapkan wajah ke kamera. Wajah belum terdaftar, jadi absen belum bisa disimpan. Minta admin mendaftarkan wajah, atau masuk dengan PIN.';
+      statusKamera.textContent = 'Kamera depan ponsel menyala. Hadapkan wajah. Wajah belum terdaftar, jadi absen belum bisa disimpan. Minta admin mendaftarkan wajah, atau masuk dengan PIN.';
       return;
     }
     await pindai(pos, signal);
@@ -169,7 +169,7 @@ async function layarDepan() {
 async function pindai(pos, signal) {
   try {
     while (!signal.aborted) {
-      statusKamera.textContent = 'Hadapkan wajah, lalu kedipkan mata atau gelengkan kepala.';
+      statusKamera.textContent = 'Kamera depan menyala. Hadapkan wajah, lalu kedipkan mata atau gelengkan kepala.';
       const gerak = await watchLiveness(video, {
         onStatus: (text) => { statusKamera.textContent = text; },
         signal

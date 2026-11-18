@@ -31,29 +31,74 @@ export function ensureModels(onStatus) {
   return modelPromise;
 }
 
+function isFrontLabel(label) {
+  return /front|user|depan|facetime|selfie|inner/i.test(label || '');
+}
+
+function isBackLabel(label) {
+  return /back|rear|environment|belakang|outer/i.test(label || '');
+}
+
+async function attachStream(video, stream) {
+  video.srcObject = stream;
+  video.muted = true;
+  video.playsInline = true;
+  await video.play();
+  if (!video.videoWidth) {
+    await new Promise((resolve) => {
+      video.onloadedmetadata = () => resolve();
+    });
+  }
+  return stream;
+}
+
 export async function openCamera(video) {
   const attempts = [
-    { video: { facingMode: { ideal: 'user' }, width: { ideal: 720 }, height: { ideal: 960 } }, audio: false },
-    { video: { facingMode: 'user' }, audio: false },
-    { video: true, audio: false }
+    { video: { facingMode: { exact: 'user' }, width: { ideal: 720 }, height: { ideal: 960 } }, audio: false },
+    { video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 960 } }, audio: false }
   ];
   let lastError;
   for (const constraints of attempts) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      video.srcObject = stream;
-      await video.play();
-      if (!video.videoWidth) {
-        await new Promise((resolve) => {
-          video.onloadedmetadata = () => resolve();
-        });
+      const facing = stream.getVideoTracks()[0]?.getSettings?.().facingMode;
+      if (facing === 'environment') {
+        stopStream(stream);
+        continue;
       }
-      return stream;
+      return attachStream(video, stream);
     } catch (error) {
       lastError = error;
     }
   }
-  throw lastError || new Error('Kamera tidak bisa dibuka.');
+
+  try {
+    const seed = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    stopStream(seed);
+  } catch (error) {
+    lastError = error;
+  }
+  const cameras = (await navigator.mediaDevices.enumerateDevices().catch(() => []))
+    .filter((device) => device.kind === 'videoinput');
+  const front = cameras.find((device) => isFrontLabel(device.label))
+    || cameras.find((device) => device.label && !isBackLabel(device.label));
+  if (front?.deviceId) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: front.deviceId }, width: { ideal: 720 }, height: { ideal: 960 } },
+        audio: false
+      });
+      const facing = stream.getVideoTracks()[0]?.getSettings?.().facingMode;
+      if (facing === 'environment') {
+        stopStream(stream);
+      } else {
+        return attachStream(video, stream);
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('Kamera depan tidak bisa dibuka. Izinkan kamera depan di ponsel.');
 }
 
 export function stopStream(stream) {
