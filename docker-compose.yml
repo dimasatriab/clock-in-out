@@ -1,0 +1,31 @@
+services:
+  app:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - hadir-data:/app/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10
+    profiles: ["https"]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  hadir-data:
+  caddy-data:
+  caddy-config:

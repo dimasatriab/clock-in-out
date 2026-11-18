@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#083f36">
+  <meta name="robots" content="noindex">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Hadir">
+  <title>Hadir — Absensi karyawan</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/favicon.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <main class="kerangka" id="layar"></main>
+  <div id="kamera" class="kamera" hidden>
+    <video id="video" autoplay muted playsinline></video>
+    <div class="cincin"></div>
+    <div class="lembar">
+      <p id="kamera-status">Menyiapkan kamera…</p>
+      <button class="tombol-kedua" id="kamera-batal" type="button">Batal</button>
+    </div>
+  </div>
+  <script type="module" src="/js/employee.js"></script>
+</body>
+</html>
