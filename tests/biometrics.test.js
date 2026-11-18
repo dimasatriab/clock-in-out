@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessEnrollment, assessLiveness, bestFaceDistance, euclidean } from '../src/biometrics.js';
+import { assessEnrollment, assessLiveness, bestFaceDistance, euclidean, identifyFace } from '../src/biometrics.js';
 
 function descriptor(shift = 0) {
   const values = Array.from({ length: 128 }, (_, index) => ((index % 5) - 2) / 20);
@@ -34,4 +34,20 @@ test('pendaftaran wajah butuh tiga sudut dari orang yang sama', () => {
   assert.equal(assessEnrollment([frame(0.3, 0)]).error, 'need_three_faces');
   assert.ok(bestFaceDistance(descriptor(), [descriptor(0.02), descriptor(1)]) < 0.05);
   assert.equal(euclidean([1, 0], [0, 0]), 1);
+});
+
+test('pengenalan wajah memilih karyawan terdekat', () => {
+  const people = [
+    { id: 1, descriptors: [descriptor(0)] },
+    { id: 2, descriptors: [descriptor(1.2)] }
+  ];
+  const match = identifyFace(descriptor(0.02), people, 0.5);
+  assert.equal(match.ok, true);
+  assert.equal(match.id, 1);
+  assert.equal(identifyFace(descriptor(2), people, 0.5).error, 'face_unknown');
+  const twins = [
+    { id: 3, descriptors: [descriptor(0)] },
+    { id: 4, descriptors: [descriptor(0.03)] }
+  ];
+  assert.equal(identifyFace(descriptor(0.01), twins, 0.5).error, 'ambiguous_face');
 });

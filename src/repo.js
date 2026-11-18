@@ -201,6 +201,24 @@ export function deleteLocation(db, id) {
   });
 }
 
+export function faceCatalog(db) {
+  const rows = db.prepare(`
+    SELECT e.id AS employee_id, f.descriptor
+    FROM employees e
+    JOIN face_samples f ON f.employee_id = e.id
+    WHERE e.active = 1
+    ORDER BY e.id, f.id
+  `).all();
+  const grouped = new Map();
+  for (const row of rows) {
+    if (!grouped.has(row.employee_id)) grouped.set(row.employee_id, []);
+    grouped.get(row.employee_id).push(JSON.parse(row.descriptor));
+  }
+  return [...grouped.entries()]
+    .filter(([, descriptors]) => descriptors.length >= 2)
+    .map(([id, descriptors]) => ({ id, descriptors }));
+}
+
 export function faceSamples(db, employeeId) {
   return db.prepare('SELECT id, employee_id, descriptor, image_path, created_at FROM face_samples WHERE employee_id = ? ORDER BY id').all(employeeId).map((row) => ({
     id: row.id,

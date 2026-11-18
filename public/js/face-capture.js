@@ -139,8 +139,19 @@ export function watchLiveness(video, { onStatus, signal }) {
   const samples = [];
   let stopped = false;
   let busy = false;
-  signal?.addEventListener('abort', () => { stopped = true; });
   return new Promise((resolve, reject) => {
+    const batalkan = () => {
+      if (stopped) return;
+      stopped = true;
+      const error = new Error('Dibatalkan');
+      error.name = 'AbortError';
+      reject(error);
+    };
+    if (signal?.aborted) {
+      batalkan();
+      return;
+    }
+    signal?.addEventListener('abort', batalkan);
     const loop = async () => {
       if (stopped) return;
       if (!busy) {

@@ -16,6 +16,22 @@ export function bestFaceDistance(probe, samples) {
   return best;
 }
 
+export function identifyFace(probe, people, maxDistance) {
+  const ranked = (people || [])
+    .map((person) => ({
+      id: person.id,
+      distance: bestFaceDistance(probe, person.descriptors || [])
+    }))
+    .filter((person) => Number.isFinite(person.distance))
+    .sort((a, b) => a.distance - b.distance || a.id - b.id);
+  if (!ranked.length || ranked[0].distance > maxDistance) return { ok: false, error: 'face_unknown' };
+  const second = ranked[1];
+  if (second && second.distance <= maxDistance && second.distance - ranked[0].distance < 0.08) {
+    return { ok: false, error: 'ambiguous_face' };
+  }
+  return { ok: true, id: ranked[0].id, distance: ranked[0].distance };
+}
+
 function validFrame(frame) {
   if (!frame) return false;
   if (!Number.isFinite(frame.ear) || frame.ear < 0.02 || frame.ear > 0.7) return false;

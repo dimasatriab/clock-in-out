@@ -9,6 +9,8 @@ export const PESAN = {
   outside_geofence: 'Anda berada di luar area kerja yang ditentukan.',
   liveness_failed: 'Gerakan hidup tidak terbaca. Kedipkan mata atau gelengkan kepala pelan. Jangan gunakan foto.',
   face_mismatch: 'Wajah tidak cocok dengan data karyawan ini.',
+  face_unknown: 'Wajah tidak dikenali. Minta admin mendaftarkan wajah, atau masuk dengan PIN.',
+  ambiguous_face: 'Wajah ini mirip lebih dari satu karyawan. Minta admin menambah swafoto yang lebih jelas.',
   no_face: 'Wajah tidak terdeteksi. Hadap kamera di tempat yang terang.',
   multiple_faces: 'Pastikan hanya satu wajah yang terlihat di kamera.',
   face_too_small: 'Dekatkan wajah ke kamera.',

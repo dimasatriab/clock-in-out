@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import multer from 'multer';
 import { BUSINESSES, DEMO_ADMIN_PASSWORD } from './demo-data.js';
-import { assessEnrollment, assessLiveness, bestFaceDistance, evidenceFrameIndex } from './biometrics.js';
+import { assessEnrollment, assessLiveness, bestFaceDistance, evidenceFrameIndex, identifyFace } from './biometrics.js';
 import { faceRuntime } from './face.js';
 import { matchGeofence } from './geo.js';
 import { validateJpeg } from './images.js';
@@ -104,6 +104,65 @@ function requireAdmin(req, res) {
     return null;
   }
   return admin;
+}
+
+function recordPunch(req, res, { employee, action, frames, evidenceIndex, faceDistance, decision, now }) {
+  const config = configOf(req);
+  const paths = frames.map((frame) => saveJpeg(config, frame.buffer));
+  try {
+    if (action === 'in') {
+      const id = repo.insertClockIn(dbOf(req), {
+        employeeId: employee.id,
+        locationId: decision.locationId,
+        clockInAt: now.toISOString(),
+        lat: Number(req.body.lat),
+        lng: Number(req.body.lng),
+        accuracy: Number(req.body.accuracy),
+        distanceMeters: decision.distanceMeters,
+        photo: paths[evidenceIndex],
+        frames: paths,
+        faceDistance,
+        liveness: decision.method,
+        lateMinutes: decision.lateMinutes
+      });
+      const terlambat = decision.lateMinutes > 0 ? ` Terlambat ${decision.lateMinutes} menit.` : '';
+      sendOk(res, {
+        pesan: `${employee.name} absen masuk.${terlambat}`,
+        nama: employee.name,
+        aksi: 'in',
+        absensi: repo.getAttendance(dbOf(req), id)
+      });
+      return;
+    }
+    const open = repo.openAttendance(dbOf(req), employee.id);
+    repo.completeClockOut(dbOf(req), open.id, {
+      clockOutAt: now.toISOString(),
+      locationId: decision.locationId,
+      lat: Number(req.body.lat),
+      lng: Number(req.body.lng),
+      accuracy: Number(req.body.accuracy),
+      distanceMeters: decision.distanceMeters,
+      photo: paths[evidenceIndex],
+      frames: paths,
+      faceDistance,
+      liveness: decision.method
+    });
+    const absensi = repo.getAttendance(dbOf(req), open.id);
+    const durasi = formatDurasi(absensi.hoursWorked);
+    sendOk(res, {
+      pesan: durasi ? `${employee.name} absen pulang. ${durasi}.` : `${employee.name} absen pulang.`,
+      nama: employee.name,
+      aksi: 'out',
+      absensi
+    });
+  } catch (error) {
+    for (const relative of paths) removeUpload(config, relative);
+    if (error.code === 'already_in' || error.code === 'not_clocked_in') {
+      sendError(res, error.code);
+      return;
+    }
+    throw error;
+  }
 }
 
 function requireEmployee(req, res) {
@@ -327,47 +386,79 @@ export function registerRoutes(app) {
       });
     }
 
-    const config = configOf(req);
-    const paths = read.frames.map((frame) => saveJpeg(config, frame.buffer));
-    try {
-      if (req.body.action === 'in') {
-        const id = repo.insertClockIn(dbOf(req), {
-          employeeId: employee.id,
-          locationId: decision.locationId,
-          clockInAt: now.toISOString(),
-          lat: Number(req.body.lat),
-          lng: Number(req.body.lng),
-          accuracy: Number(req.body.accuracy),
-          distanceMeters: decision.distanceMeters,
-          photo: paths[evidenceIndex],
-          frames: paths,
-          faceDistance,
-          liveness: decision.method,
-          lateMinutes: decision.lateMinutes
-        });
-        const terlambat = decision.lateMinutes > 0 ? ` Terlambat ${decision.lateMinutes} menit.` : '';
-        return sendOk(res, { pesan: `Absen masuk tercatat.${terlambat}`, absensi: repo.getAttendance(dbOf(req), id) });
-      }
-      repo.completeClockOut(dbOf(req), open.id, {
-        clockOutAt: now.toISOString(),
-        locationId: decision.locationId,
-        lat: Number(req.body.lat),
-        lng: Number(req.body.lng),
-        accuracy: Number(req.body.accuracy),
-        distanceMeters: decision.distanceMeters,
-        photo: paths[evidenceIndex],
-        frames: paths,
-        faceDistance,
-        liveness: decision.method
-      });
-      const absensi = repo.getAttendance(dbOf(req), open.id);
-      const durasi = formatDurasi(absensi.hoursWorked);
-      return sendOk(res, { pesan: durasi ? `Absen pulang tercatat. ${durasi}.` : 'Absen pulang tercatat.', absensi });
-    } catch (error) {
-      for (const relative of paths) removeUpload(config, relative);
-      if (error.code === 'already_in' || error.code === 'not_clocked_in') return sendError(res, error.code);
-      throw error;
+    recordPunch(req, res, {
+      employee,
+      action: req.body.action,
+      frames: read.frames,
+      evidenceIndex,
+      faceDistance,
+      decision,
+      now
+    });
+  }));
+
+  app.get('/api/karyawan/wajah-siap', (req, res) => {
+    sendOk(res, { jumlah: repo.faceCatalog(dbOf(req)).length });
+  });
+
+  app.post('/api/karyawan/kenali', acceptFiles('frame'), asyncRoute(async (req, res) => {
+    if (!guardWrite(req, res)) return;
+    if (!rateLimit(`kenali:${clientIp(req)}`, { limit: 20, windowMs: 10 * 60 * 1000 })) {
+      return sendError(res, 'rate_limited', 429);
     }
+    const catalog = repo.faceCatalog(dbOf(req));
+    if (!catalog.length) return sendError(res, 'face_not_enrolled');
+    const checked = validateFrames(req.files);
+    if (checked.error) return sendError(res, checked.error === 'need_three_faces' ? 'liveness_failed' : checked.error);
+    const read = await readFaces(req.files);
+    if (read.error) return sendError(res, read.error === 'need_three_faces' ? 'liveness_failed' : read.error);
+    const liveness = assessLiveness(read.frames);
+    if (!liveness.ok) return sendError(res, liveness.error || 'liveness_failed');
+    const evidenceIndex = evidenceFrameIndex(read.frames, liveness.method);
+    const found = identifyFace(read.frames[evidenceIndex].descriptor, catalog, configOf(req).faceMaxDistance);
+    if (!found.ok) return sendError(res, found.error);
+    const employee = repo.getEmployee(dbOf(req), found.id);
+    if (!employee || !employee.active) return sendError(res, 'inactive', 403);
+    const geofence = matchGeofence(
+      { lat: req.body.lat, lng: req.body.lng, accuracy: req.body.accuracy },
+      repo.assignedLocations(dbOf(req), employee.id),
+      { maxAccuracyMeters: configOf(req).maxGpsAccuracy }
+    );
+    if (!geofence.ok) return sendError(res, geofence.error, 400, { nama: employee.name, akurasi: geofence.accuracy });
+    const now = new Date();
+    const open = repo.openAttendance(dbOf(req), employee.id);
+    const action = open ? 'out' : 'in';
+    const decision = evaluateClock({
+      action,
+      employeeActive: true,
+      faceSampleCount: catalog.find((person) => person.id === employee.id).descriptors.length,
+      openAttendance: open,
+      geofence,
+      faceDistance: found.distance,
+      maxFaceDistance: configOf(req).faceMaxDistance,
+      liveness,
+      shiftStart: employee.shiftStart,
+      graceMinutes: employee.graceMinutes,
+      now
+    });
+    if (!decision.ok) return sendError(res, decision.error, 400, { nama: employee.name });
+    const { token, tokenHash } = tokenPair();
+    repo.createSession(dbOf(req), {
+      tokenHash,
+      kind: 'employee',
+      subjectId: employee.id,
+      expiresAt: new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString()
+    });
+    setSessionCookie(res, configOf(req), 'employee', token);
+    recordPunch(req, res, {
+      employee,
+      action,
+      frames: read.frames,
+      evidenceIndex,
+      faceDistance: found.distance,
+      decision,
+      now
+    });
   }));
 
   app.post('/api/admin/masuk', (req, res) => {

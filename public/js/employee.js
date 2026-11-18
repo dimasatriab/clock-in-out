@@ -6,7 +6,9 @@ const layar = document.querySelector('#layar');
 const kamera = document.querySelector('#kamera');
 const video = document.querySelector('#video');
 const statusKamera = document.querySelector('#kamera-status');
-const batal = document.querySelector('#kamera-batal');
+const tombolPin = document.querySelector('#kamera-pin');
+const tombolStatus = document.querySelector('#kamera-riwayat');
+const jamKamera = document.querySelector('#kamera-jam');
 let stream;
 let cameraAbort;
 let tick;
@@ -41,7 +43,7 @@ function gambarMasuk() {
     const data = new FormData(event.currentTarget);
     try {
       await api('/api/karyawan/masuk', { method: 'POST', body: { phone: data.get('phone'), pin: data.get('pin') } });
-      await tampilBeranda();
+      await layarDepan();
     } catch (error) {
       galat.hidden = false;
       galat.textContent = error.message;
@@ -86,7 +88,7 @@ async function tampilBeranda(pesanAwal) {
       <p class="mini">${data.karyawan.shiftStart ? `Jadwal masuk ${esc(data.karyawan.shiftStart)} · toleransi ${esc(data.karyawan.graceMinutes)} menit` : 'Tidak ada jam masuk tetap.'}</p>
       <p class="mini">Wajah tersimpan: ${esc(data.karyawan.faceSampleCount)} sampel. ${data.karyawan.faceSampleCount < 2 ? 'Minta admin mendaftarkan wajah dulu.' : ''}</p>
       <div id="lokasi-status" class="pesan">Mengecek lokasi…</div>
-      <button class="tombol" id="absen" type="button" style="margin-top:14px">${terbuka ? 'Absen pulang' : 'Absen masuk'}</button>
+      <button class="tombol" id="absen" type="button" style="margin-top:14px">Kembali ke kamera</button>
       <button class="tombol-kedua" id="segar" type="button" style="margin-top:8px">Perbarui lokasi</button>
     </section>
     <section class="kartu">
@@ -120,10 +122,10 @@ async function tampilBeranda(pesanAwal) {
     }
   }
   layar.querySelector('#segar').addEventListener('click', cek);
-  layar.querySelector('#absen').addEventListener('click', () => mulaiAbsen(terbuka ? 'out' : 'in'));
+  layar.querySelector('#absen').addEventListener('click', () => layarDepan());
   layar.querySelector('#keluar').addEventListener('click', async () => {
     await api('/api/karyawan/keluar', { method: 'POST', body: {} });
-    gambarMasuk();
+    await layarDepan();
   });
   if (pesanAwal) {
     const kotak = layar.querySelector('#lokasi-status');
@@ -135,35 +137,62 @@ async function tampilBeranda(pesanAwal) {
   ensureModels().catch(() => {});
 }
 
-async function mulaiAbsen(action) {
+async function layarDepan() {
   cameraAbort?.abort();
   cameraAbort = new AbortController();
+  const signal = cameraAbort.signal;
+  layar.innerHTML = '';
   kamera.hidden = false;
-  statusKamera.textContent = 'Mencari GPS…';
+  clearInterval(tick);
+  jamKamera.textContent = jam();
+  tick = setInterval(() => { jamKamera.textContent = jam(); }, 1000);
+  statusKamera.textContent = 'Menyiapkan pengenalan wajah…';
   try {
     const pos = await posisi();
-    await api(`/api/karyawan/cek-lokasi?lat=${pos.lat}&lng=${pos.lng}&akurasi=${pos.accuracy}`);
-    statusKamera.textContent = 'Membuka kamera depan…';
+    if (signal.aborted) return;
+    let siap = { jumlah: 0 };
+    try { siap = await api('/api/karyawan/wajah-siap'); } catch { /* kamera tetap tampil */ }
     await ensureModels((text) => { statusKamera.textContent = text; });
-    stream = await openCamera(video);
-    const tantangan = await api('/api/karyawan/tantangan', { method: 'POST', body: {} });
-    statusKamera.textContent = 'Lihat kamera. Kedipkan mata sekali, atau gelengkan kepala pelan.';
-    const hasil = await watchLiveness(video, { onStatus: (text) => { statusKamera.textContent = text; }, signal: cameraAbort.signal });
-    statusKamera.textContent = 'Mengirim absen…';
-    const form = new FormData();
-    form.set('action', action);
-    form.set('token', tantangan.token);
-    form.set('lat', String(pos.lat));
-    form.set('lng', String(pos.lng));
-    form.set('accuracy', String(pos.accuracy));
-    hasil.frames.forEach((frame, index) => form.append('frame', frame.blob, `wajah-${index}.jpg`));
-    const rekam = await api('/api/karyawan/absen', { method: 'POST', form });
-    tutupKamera();
-    await tampilBeranda({ baik: true, teks: rekam.pesan });
+    if (signal.aborted) return;
+    if (!stream) stream = await openCamera(video);
+    if (!siap.jumlah) {
+      statusKamera.textContent = 'Hadapkan wajah ke kamera. Wajah belum terdaftar, jadi absen belum bisa disimpan. Minta admin mendaftarkan wajah, atau masuk dengan PIN.';
+      return;
+    }
+    await pindai(pos, signal);
   } catch (error) {
-    tutupKamera();
-    if (error.name === 'AbortError') return;
-    await tampilBeranda({ baik: false, teks: error.message }).catch(() => gambarMasuk());
+    if (signal.aborted || error.name === 'AbortError') return;
+    statusKamera.textContent = error.message;
+  }
+}
+
+async function pindai(pos, signal) {
+  try {
+    while (!signal.aborted) {
+      statusKamera.textContent = 'Hadapkan wajah, lalu kedipkan mata atau gelengkan kepala.';
+      const gerak = await watchLiveness(video, {
+        onStatus: (text) => { statusKamera.textContent = text; },
+        signal
+      });
+      if (signal.aborted) return;
+      statusKamera.textContent = 'Mencocokkan wajah…';
+      const titik = await posisi().catch(() => pos);
+      const form = new FormData();
+      form.set('lat', String(titik.lat));
+      form.set('lng', String(titik.lng));
+      form.set('accuracy', String(titik.accuracy));
+      gerak.frames.forEach((frame, index) => form.append('frame', frame.blob, `wajah-${index}.jpg`));
+      try {
+        const rekam = await api('/api/karyawan/kenali', { method: 'POST', form });
+        statusKamera.textContent = rekam.pesan;
+      } catch (error) {
+        statusKamera.textContent = error.message;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2800));
+    }
+  } catch (error) {
+    if (signal.aborted || error.name === 'AbortError') return;
+    statusKamera.textContent = error.message;
   }
 }
 
@@ -173,10 +202,23 @@ function tutupKamera() {
   stream = null;
   video.srcObject = null;
   kamera.hidden = true;
+  clearInterval(tick);
 }
 
-batal.addEventListener('click', tutupKamera);
+tombolPin.addEventListener('click', () => {
+  tutupKamera();
+  gambarMasuk();
+});
+
+tombolStatus.addEventListener('click', async () => {
+  tutupKamera();
+  try {
+    await tampilBeranda();
+  } catch {
+    gambarMasuk();
+  }
+});
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
-api('/api/karyawan/saya').then(tampilBeranda).catch(gambarMasuk);
+layarDepan();

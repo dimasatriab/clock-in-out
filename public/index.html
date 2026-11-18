@@ -15,12 +15,16 @@
 </head>
 <body>
   <main class="kerangka" id="layar"></main>
-  <div id="kamera" class="kamera" hidden>
+  <div id="kamera" class="kamera">
     <video id="video" autoplay muted playsinline></video>
     <div class="cincin"></div>
     <div class="lembar">
-      <p id="kamera-status">Menyiapkan kamera…</p>
-      <button class="tombol-kedua" id="kamera-batal" type="button">Batal</button>
+      <p id="kamera-jam"></p>
+      <p id="kamera-status">Menyiapkan pengenalan wajah…</p>
+      <div class="baris">
+        <button class="tombol-kedua" id="kamera-pin" type="button">Masuk dengan PIN</button>
+        <button class="tombol-kedua" id="kamera-riwayat" type="button">Status</button>
+      </div>
     </div>
   </div>
   <script type="module" src="/js/employee.js"></script>
