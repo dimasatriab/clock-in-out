@@ -239,7 +239,9 @@ input:focus, select:focus { outline: 2px solid rgba(14, 107, 92, 0.35); border-c
   background: #efe7da;
 }
 .peta { height: 280px; border-radius: 16px; margin-top: 8px; }
-.cek { display: inline-flex; gap: 8px; align-items: center; margin-top: 8px; font-weight: 500; }
+.cek-daftar { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; }
+.cek { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-weight: 500; }
+.cek-daftar .cek { margin: 0; }
 dialog {
   border: 0;
   border-radius: 20px;

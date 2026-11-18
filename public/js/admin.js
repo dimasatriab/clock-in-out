@@ -156,9 +156,9 @@ function opsiUsaha(selected) {
 }
 
 function opsiLokasi(selected) {
-  return state.lokasi.map((lokasi) => `
+  return `<div class="cek-daftar">${state.lokasi.map((lokasi) => `
     <label class="cek"><input type="checkbox" name="locationIds" value="${lokasi.id}" ${selected.includes(lokasi.id) ? 'checked' : ''}> ${esc(lokasi.name)}</label>
-  `).join('');
+  `).join('')}</div>`;
 }
 
 function formKaryawan(orang = {}) {
