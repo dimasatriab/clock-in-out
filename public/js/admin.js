@@ -67,14 +67,16 @@ function kerangka() {
   aplikasi.innerHTML = `
     <div class="admin">
       <aside class="samping">
-        <strong>HADIR</strong>
+        <strong>Hadir</strong>
         <div class="mini" style="margin-top:6px">${esc(state.saya.namaPengguna)}</div>
         <nav>
           ${menu.map(([id, label]) => `<button type="button" data-bagian="${id}" class="${state.bagian === id ? 'aktif' : ''}">${label}</button>`).join('')}
         </nav>
-        <button id="keluar" type="button">Keluar</button>
       </aside>
-      <main class="isi"><div class="isi-dalam" id="isi"></div></main>
+      <main class="isi">
+        <div class="bar-atas"><button id="keluar" type="button">Keluar</button></div>
+        <div class="isi-dalam" id="isi"></div>
+      </main>
     </div>`;
   aplikasi.querySelectorAll('[data-bagian]').forEach((button) => {
     button.addEventListener('click', async () => {
