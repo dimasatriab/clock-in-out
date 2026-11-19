@@ -372,12 +372,17 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 .samping button.aktif { background: var(--blue-soft); color: var(--blue); }
 .bar-atas { display: flex; justify-content: flex-end; }
 .bar-atas button {
-  background: none;
+  background: transparent;
   border: 0;
-  color: var(--blue);
-  font-weight: 600;
-  padding: 4px 2px 8px;
+  box-shadow: none;
+  color: #8e8e93;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  padding: 8px 2px;
+  border-radius: 10px;
 }
+.bar-atas button:active { background: rgba(60, 60, 67, 0.06); color: #636366; }
 .isi { padding: 28px 22px 40px; }
 .isi-dalam { width: min(980px, 100%); }
 .isi h1 { font-size: 34px; margin: 8px 0 16px; }
