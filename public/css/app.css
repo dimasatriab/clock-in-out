@@ -160,8 +160,20 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   backdrop-filter: saturate(180%) blur(24px);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
 }
-.lembar p { margin: 0 0 10px; font-weight: 600; }
-#kamera-jam { font-variant-numeric: tabular-nums; font-size: 22px; letter-spacing: -0.4px; }
+.lembar p { margin: 0 0 12px; font-weight: 600; }
+#kamera-jam { font-variant-numeric: tabular-nums; font-size: 34px; letter-spacing: -0.6px; margin: 0 0 14px; }
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+#kamera-riwayat { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.lampu {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  animation: kedip 1s steps(1) infinite;
+}
+.lampu.merah { background: #ff453a; box-shadow: 0 0 10px #ff453a; }
+.lampu.hijau { background: #30d158; box-shadow: 0 0 10px #30d158; }
+@keyframes kedip { 50% { opacity: 0.2; } }
 .kamera .tombol { background: var(--blue); }
 .kamera .tombol-kedua {
   color: white;

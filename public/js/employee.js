@@ -5,13 +5,14 @@ import { durasi, esc, jam, jamPendek, sapaan, tanggalPanjang, tanggalPendek } fr
 const layar = document.querySelector('#layar');
 const kamera = document.querySelector('#kamera');
 const video = document.querySelector('#video');
-const statusKamera = document.querySelector('#kamera-status');
 const tombolPin = document.querySelector('#kamera-pin');
 const tombolStatus = document.querySelector('#kamera-riwayat');
 const jamKamera = document.querySelector('#kamera-jam');
+const lampu = document.querySelector('#lampu');
 let stream;
 let cameraAbort;
 let tick;
+let layarToken = 0;
 
 function gambarMasuk() {
   layar.innerHTML = `
@@ -137,7 +138,16 @@ async function tampilBeranda(pesanAwal) {
   ensureModels().catch(() => {});
 }
 
+function masihLayar(token) {
+  return token === layarToken;
+}
+
+function setLampu(siap) {
+  lampu.className = siap ? 'lampu hijau' : 'lampu merah';
+}
+
 async function layarDepan() {
+  const token = ++layarToken;
   cameraAbort?.abort();
   cameraAbort = new AbortController();
   const signal = cameraAbort.signal;
@@ -146,57 +156,55 @@ async function layarDepan() {
   clearInterval(tick);
   jamKamera.textContent = jam();
   tick = setInterval(() => { jamKamera.textContent = jam(); }, 1000);
-  statusKamera.textContent = 'Menyiapkan pengenalan wajah…';
+  setLampu(false);
   try {
     const pos = await posisi();
-    if (signal.aborted) return;
-    let siap = { jumlah: 0 };
-    try { siap = await api('/api/karyawan/wajah-siap'); } catch { /* kamera tetap tampil */ }
-    await ensureModels((text) => { statusKamera.textContent = text; });
-    if (signal.aborted) return;
+    if (!masihLayar(token) || signal.aborted) return;
+    await ensureModels();
+    if (!masihLayar(token) || signal.aborted) return;
     if (!stream) stream = await openCamera(video);
-    if (!siap.jumlah) {
-      statusKamera.textContent = 'Kamera depan ponsel menyala. Hadapkan wajah. Wajah belum terdaftar, jadi absen belum bisa disimpan. Minta admin mendaftarkan wajah, atau masuk dengan PIN.';
-      return;
-    }
-    await pindai(pos, signal);
+    if (!masihLayar(token)) return;
+    setLampu(true);
+    await pindai(pos, signal, token);
   } catch (error) {
-    if (signal.aborted || error.name === 'AbortError') return;
-    statusKamera.textContent = error.message;
+    if (!masihLayar(token) || signal.aborted || error.name === 'AbortError') return;
+    setLampu(false);
   }
 }
 
-async function pindai(pos, signal) {
+async function pindai(pos, signal, token) {
   try {
-    while (!signal.aborted) {
-      statusKamera.textContent = 'Kamera depan menyala. Hadapkan wajah, lalu kedipkan mata atau gelengkan kepala.';
-      const gerak = await watchLiveness(video, {
-        onStatus: (text) => { statusKamera.textContent = text; },
-        signal
-      });
-      if (signal.aborted) return;
-      statusKamera.textContent = 'Mencocokkan wajah…';
-      const titik = await posisi().catch(() => pos);
+    while (!signal.aborted && masihLayar(token)) {
+      setLampu(true);
+      const gerak = await watchLiveness(video, { signal });
+      if (signal.aborted || !masihLayar(token)) return;
+      const titik = await posisi().catch(() => null);
+      if (!titik) {
+        setLampu(false);
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        continue;
+      }
       const form = new FormData();
       form.set('lat', String(titik.lat));
       form.set('lng', String(titik.lng));
       form.set('accuracy', String(titik.accuracy));
       gerak.frames.forEach((frame, index) => form.append('frame', frame.blob, `wajah-${index}.jpg`));
       try {
-        const rekam = await api('/api/karyawan/kenali', { method: 'POST', form });
-        statusKamera.textContent = rekam.pesan;
-      } catch (error) {
-        statusKamera.textContent = error.message;
+        await api('/api/karyawan/kenali', { method: 'POST', form });
+        setLampu(true);
+      } catch {
+        setLampu(false);
       }
-      await new Promise((resolve) => setTimeout(resolve, 2800));
+      await new Promise((resolve) => setTimeout(resolve, 1800));
     }
   } catch (error) {
     if (signal.aborted || error.name === 'AbortError') return;
-    statusKamera.textContent = error.message;
+    setLampu(false);
   }
 }
 
 function tutupKamera() {
+  layarToken += 1;
   cameraAbort?.abort();
   stopStream(stream);
   stream = null;
