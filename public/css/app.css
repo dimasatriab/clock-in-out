@@ -122,6 +122,31 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   white-space: nowrap;
 }
 .jam-orang .mini { margin-top: 6px; }
+.karyawan-daftar { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.karyawan-kartu {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+.karyawan-kartu .mini { margin-top: 4px; }
+.karyawan-aksi { display: flex; gap: 8px; margin-top: 12px; }
+.karyawan-aksi button {
+  flex: 1;
+  width: auto;
+  min-height: 42px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: none;
+}
+.karyawan-aksi .tombol-kedua {
+  background: transparent;
+  border: 1px solid rgba(60, 60, 67, 0.16);
+  color: var(--blue);
+}
 .item {
   display: flex;
   justify-content: space-between;

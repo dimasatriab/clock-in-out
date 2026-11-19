@@ -218,13 +218,15 @@ function gambarKaryawan() {
       <h2 style="margin-top:0;font-size:18px">Tambah karyawan</h2>
       ${formKaryawan()}
     </article>
-    <div class="daftar">
+    <div class="karyawan-daftar">
       ${state.karyawan.map((orang) => `
-        <article class="kartu" style="margin:0">
-          <strong>${esc(orang.name)}</strong> ${orang.active ? '' : '<span class="chip bad">Nonaktif</span>'}
-          <div class="mini">${esc(orang.phone)} · ${esc(orang.businessName)} · wajah ${orang.faceSampleCount}</div>
-          <div class="mini">Jadwal ${esc(orang.shiftStart || 'bebas')} · toleransi ${esc(orang.graceMinutes)} menit</div>
-          <div class="baris" style="margin-top:10px">
+        <article class="karyawan-kartu">
+          <div class="jam-baris">
+            <strong>${esc(orang.name)}</strong>
+            ${orang.active ? '' : '<span class="chip bad">Nonaktif</span>'}
+          </div>
+          <div class="mini">${esc(orang.phone)} · ${esc(orang.businessName)} · ${esc(orang.shiftStart || 'bebas')} · wajah ${orang.faceSampleCount}</div>
+          <div class="karyawan-aksi">
             <button class="tombol-kedua" type="button" data-ubah="${orang.id}">Ubah</button>
             <button class="tombol" type="button" data-wajah="${orang.id}">Daftarkan wajah</button>
           </div>
