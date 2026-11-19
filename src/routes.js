@@ -838,7 +838,14 @@ export function registerRoutes(app) {
     if (!requireAdmin(req, res)) return;
     const range = resolveRange(req.query);
     if (!range) return sendError(res, 'bad_request');
-    sendOk(res, { ...range, rekap: repo.recap(dbOf(req), range) });
+    sendOk(res, {
+      ...range,
+      rekap: repo.recap(dbOf(req), {
+        ...range,
+        employeeId: numberOrNull(req.query.karyawanId),
+        locationId: numberOrNull(req.query.lokasiId)
+      })
+    });
   });
 
   app.get('/api/admin/ekspor.csv', (req, res) => {

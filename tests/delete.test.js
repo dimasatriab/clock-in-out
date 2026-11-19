@@ -104,6 +104,9 @@ test('hapus karyawan dan lokasi menjaga riwayat', async () => {
     assert.equal(sesudah.data.karyawan.some((item) => item.id === nisa.id), false);
     assert.equal(faceSamples(app.locals.db, nisa.id).length, 0);
     assert.equal((await request(server, { path: '/api/karyawan/saya', cookie: employeeCookie })).status, 401);
+    const rekapNisa = await request(server, { path: `/api/admin/rekap?karyawanId=${nisa.id}`, cookie: adminCookie });
+    assert.equal(rekapNisa.data.rekap.length, 1);
+    assert.equal(rekapNisa.data.rekap[0].employeeId, nisa.id);
     const riwayat = await request(server, { path: '/api/admin/absensi', cookie: adminCookie });
     const baris = riwayat.data.absensi.find((item) => item.employeeId === nisa.id);
     assert.equal(baris.employeeName, 'Nisa Putri (dihapus)');

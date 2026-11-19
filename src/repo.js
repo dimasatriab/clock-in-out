@@ -718,9 +718,11 @@ export function todayBoard(db, now = new Date(), config = {}) {
   };
 }
 
-export function recap(db, { dari, sampai }) {
-  const records = listAttendance(db, { dari, sampai, limit: 10000 });
-  const employees = listEmployees(db);
+export function recap(db, { dari, sampai, employeeId = null, locationId = null }) {
+  const records = listAttendance(db, { dari, sampai, employeeId, locationId, limit: 10000 });
+  let employees = listEmployees(db);
+  if (employeeId) employees = employees.filter((employee) => employee.id === employeeId);
+  else if (locationId) employees = [];
   const groups = new Map();
   for (const employee of employees) {
     groups.set(employee.id, {
