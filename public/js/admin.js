@@ -350,15 +350,17 @@ function gambarRiwayat() {
 
 function gambarRekap() {
   return `
-    <h1 style="margin-top:0">Rekap</h1>
+    <h1 class="judul-padat">Rekap</h1>
     ${filterForm()}
-    <div class="daftar">
+    <div class="rekap-daftar">
       ${state.rekap.map((baris) => `
-        <article class="kartu" style="margin:0">
-          <strong>${esc(baris.name)}</strong>
-          <div class="mini">${esc(baris.businessName)} · ${baris.days} hari · ${baris.shifts} absen · terlambat ${baris.lateCount} kali (${baris.lateMinutes} menit)</div>
-          <div class="mini">Jam kerja tercatat ${esc(durasi(baris.hours))}${baris.openShifts ? ` · ${baris.openShifts} belum pulang` : ''}</div>
-        </article>`).join('')}
+        <article class="jam-orang">
+          <div class="jam-baris">
+            <strong>${esc(baris.name)}</strong>
+            <span>${esc(durasi(baris.hours))}</span>
+          </div>
+          <div class="mini">${esc(baris.businessName)} · ${baris.days} hari · ${baris.shifts} absen · telat ${baris.lateCount}${baris.openShifts ? ` · ${baris.openShifts} belum pulang` : ''}</div>
+        </article>`).join('') || '<p>Tidak ada rekap pada rentang ini.</p>'}
     </div>`;
 }
 
