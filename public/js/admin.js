@@ -302,15 +302,19 @@ function filterForm() {
   const sampai = state.filter.sampai || hariIniLabel();
   return `
     <form id="filter" class="kartu">
-      <div class="baris">
+      <div class="filter-grid">
         <div><label>Dari</label><input type="date" name="dari" value="${esc(dari)}"></div>
         <div><label>Sampai</label><input type="date" name="sampai" value="${esc(sampai)}"></div>
+        <div>
+          <label>Karyawan</label>
+          <select name="karyawanId"><option value="">Semua</option>${state.karyawan.map((orang) => `<option value="${orang.id}" ${String(state.filter.karyawanId || '') === String(orang.id) ? 'selected' : ''}>${esc(orang.name)}</option>`).join('')}</select>
+        </div>
+        <div>
+          <label>Lokasi</label>
+          <select name="lokasiId"><option value="">Semua</option>${state.lokasi.map((lokasi) => `<option value="${lokasi.id}" ${String(state.filter.lokasiId || '') === String(lokasi.id) ? 'selected' : ''}>${esc(lokasi.name)}</option>`).join('')}</select>
+        </div>
       </div>
-      <label>Karyawan</label>
-      <select name="karyawanId"><option value="">Semua</option>${state.karyawan.map((orang) => `<option value="${orang.id}">${esc(orang.name)}</option>`).join('')}</select>
-      <label>Lokasi</label>
-      <select name="lokasiId"><option value="">Semua</option>${state.lokasi.map((lokasi) => `<option value="${lokasi.id}">${esc(lokasi.name)}</option>`).join('')}</select>
-      <button class="tombol" style="margin-top:12px" type="submit">Terapkan</button>
+      <button class="tombol" type="submit">Terapkan</button>
     </form>`;
 }
 
