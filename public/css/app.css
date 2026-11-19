@@ -103,6 +103,25 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 .chip.warn { background: #fff4e5; color: #c93400; }
 .chip.bad { background: #ffebe9; color: var(--bad); }
 .daftar { display: flex; flex-direction: column; gap: 0; margin-top: 4px; }
+.jam-daftar { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.jam-orang {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+.jam-baris {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.jam-baris span {
+  color: var(--muted);
+  font-weight: 400;
+  white-space: nowrap;
+}
+.jam-orang .mini { margin-top: 6px; }
 .item {
   display: flex;
   justify-content: space-between;

@@ -143,13 +143,15 @@ function gambarHari() {
       </table>
     </div>
     <h2>Jam per karyawan</h2>
-    <div class="daftar">
+    <div class="jam-daftar">
       ${state.hari.karyawan.map((orang) => `
-        <article class="kartu" style="margin:0">
-          <strong>${esc(orang.employee.name)}</strong>
-          <div class="mini">Total selesai ${esc(durasi(orang.jam || 0))}</div>
-          ${(orang.sesi || []).map((sesi) => `<div class="mini">${esc(jamPendek(sesi.clockInAt))}–${esc(jamPendek(sesi.clockOutAt))} · ${esc(durasi(sesi.hoursWorked))}${sesi.outAuto ? ' · pulang otomatis' : ''}</div>`).join('') || '<div class="mini">Belum ada sesi.</div>'}
-          ${orang.record && !orang.record.clockOutAt ? `<form data-tutup="${orang.record.id}" class="baris" style="margin-top:8px">
+        <article class="jam-orang">
+          <div class="jam-baris">
+            <strong>${esc(orang.employee.name)}</strong>
+            <span>${esc(durasi(orang.jam || 0))}</span>
+          </div>
+          ${(orang.sesi || []).map((sesi) => `<div class="mini">${esc(jamPendek(sesi.clockInAt))}–${esc(jamPendek(sesi.clockOutAt))}${sesi.outAuto ? ' · otomatis' : ''}</div>`).join('')}
+          ${orang.record && !orang.record.clockOutAt ? `<form data-tutup="${orang.record.id}" class="baris" style="margin-top:10px">
             <input type="datetime-local" name="clockOutAt">
             <button class="tombol" type="submit">Tutup sesi</button>
           </form>` : ''}
