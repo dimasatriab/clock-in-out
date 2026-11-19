@@ -18,9 +18,15 @@ export function seedIfEmpty(db, config) {
       now
     );
   }
-  if (!config.demo || !/^\d{4,6}$/.test(config.demoPin || '')) return { seeded: adminCount === 0 };
+  if (!config.demo || !/^\d{4,6}$/.test(config.demoPin || '')) {
+    ensureAdminEmployee(db, config);
+    return { seeded: adminCount === 0 };
+  }
   const employeeCount = db.prepare('SELECT COUNT(*) AS n FROM employees').get().n;
-  if (employeeCount > 0) return { seeded: false };
+  if (employeeCount > 0) {
+    ensureAdminEmployee(db, config);
+    return { seeded: false };
+  }
 
   const insertLocation = db.prepare(`
     INSERT INTO locations (business_id, name, latitude, longitude, radius_meters, active, created_at)
@@ -56,7 +62,31 @@ export function seedIfEmpty(db, config) {
     );
     link.run(Number(result.lastInsertRowid), locationIds.get(employee.locationName));
   }
+  ensureAdminEmployee(db, config);
   return { seeded: true };
+}
+
+export function ensureAdminEmployee(db, config) {
+  if (!config.adminPhone) return null;
+  const admin = getAdminByPhone(db, config.adminPhone);
+  if (!admin) return null;
+  const existing = db.prepare('SELECT id, pin_hash FROM employees WHERE phone = ?').get(config.adminPhone);
+  if (existing) {
+    if (existing.pin_hash !== admin.pin_hash) {
+      db.prepare('UPDATE employees SET pin_hash = ? WHERE id = ?').run(admin.pin_hash, existing.id);
+    }
+    return existing.id;
+  }
+  const now = new Date().toISOString();
+  const result = db.prepare(`
+    INSERT INTO employees (name, phone, pin_hash, business_id, shift_start, grace_minutes, active, created_at)
+    VALUES ('Admin', ?, ?, 'toko', NULL, 0, 1, ?)
+  `).run(config.adminPhone, admin.pin_hash, now);
+  const id = Number(result.lastInsertRowid);
+  const locations = db.prepare('SELECT id FROM locations WHERE active = 1').all();
+  const link = db.prepare('INSERT OR IGNORE INTO employee_locations (employee_id, location_id) VALUES (?, ?)');
+  for (const location of locations) link.run(id, location.id);
+  return id;
 }
 
 export function businessName(id) {
@@ -101,7 +131,11 @@ export function getAdmin(db, id) {
 }
 
 export function updateAdminPin(db, id, pinHash) {
+  const admin = getAdmin(db, id);
   db.prepare('UPDATE admins SET pin_hash = ?, must_change_password = 0 WHERE id = ?').run(pinHash, id);
+  if (admin?.phone) {
+    db.prepare('UPDATE employees SET pin_hash = ? WHERE phone = ?').run(pinHash, admin.phone);
+  }
 }
 
 export function getEmployeeByPhone(db, phone) {

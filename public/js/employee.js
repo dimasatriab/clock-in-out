@@ -7,6 +7,7 @@ const kamera = document.querySelector('#kamera');
 const video = document.querySelector('#video');
 const tombolPin = document.querySelector('#kamera-pin');
 const tombolStatus = document.querySelector('#kamera-riwayat');
+const tombolAdmin = document.querySelector('#tautan-admin');
 const lampu = document.querySelector('#lampu');
 const teksStatus = document.querySelector('#kamera-status');
 let stream;
@@ -78,7 +79,7 @@ async function tampilBeranda(pesanAwal) {
         <div class="cap-nama">HA<span>DIR</span></div>
         <div class="garis"></div>
       </div>
-      <div class="mini">${esc(data.karyawan.businessName)}</div>
+      <div class="mini">${esc(data.karyawan.businessName)}${data.admin ? ' · <a class="tautan-halus" href="/admin">Admin</a>' : ''}</div>
     </header>
     <div class="jam" id="jam">${esc(jam())}</div>
     <p class="tanggal">${esc(tanggalPanjang())}</p>
@@ -237,7 +238,8 @@ async function layarDepan() {
   layar.innerHTML = '';
   kamera.hidden = false;
   clearInterval(tick);
-    setStatus('Ready', 'ready');
+  setStatus('Ready', 'ready');
+  await periksaAdmin();
   posisi().catch(() => {});
   const pengaturanAwal = await api('/api/kiosk/pengaturan').catch(() => null);
   const merek = pengaturanAwal?.companyName || 'DBLESSMYRA';
@@ -349,6 +351,19 @@ function tutupKamera() {
   video.srcObject = null;
   kamera.hidden = true;
   clearInterval(tick);
+}
+
+tombolAdmin.addEventListener('click', () => {
+  window.location.assign('/admin');
+});
+
+async function periksaAdmin() {
+  try {
+    await api('/api/admin/saya');
+    tombolAdmin.hidden = false;
+  } catch {
+    tombolAdmin.hidden = true;
+  }
 }
 
 tombolPin.addEventListener('click', () => {

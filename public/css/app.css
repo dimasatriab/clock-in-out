@@ -261,6 +261,9 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   align-items: flex-start;
   gap: 16px;
 }
+.depan-tautan { display: flex; gap: 16px; align-items: flex-start; }
+#tautan-admin[hidden] { display: none !important; }
+.depan.sedang-konfirmasi #tautan-admin { display: none; }
 .depan-judul {
   margin: 0;
   flex: 1;

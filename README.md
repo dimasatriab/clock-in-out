@@ -21,7 +21,7 @@ Buka <http://localhost:3000> untuk karyawan dan <http://localhost:3000/admin> un
 
 Tidak ada nomor HP atau PIN bawaan di repo. Di `.env`, isi `ADMIN_PHONE` dan `ADMIN_PIN` (4–6 angka). Server production menolak jalan jika keduanya tidak valid, dan menolak `DEMO=1`.
 
-Admin masuk dengan nomor HP dan PIN itu. Nilai disimpan sebagai hash. PIN bisa diganti dari pengaturan. PIN karyawan juga di-hash.
+Admin masuk dengan nomor HP dan PIN itu. Nilai disimpan sebagai hash. PIN bisa diganti dari pengaturan. PIN karyawan juga di-hash. Nomor yang sama juga menjadi karyawan, jadi admin bisa absen seperti yang lain. Setelah PIN di layar depan, tautan Admin membuka dasbor tanpa login lagi. Login di `/admin` tetap memakai nomor dan PIN yang sama.
 
 Data percobaan (tiga lokasi contoh dan tiga karyawan) hanya muncul jika `DEMO=1` dan `DEMO_PIN` diisi, dan tidak pernah di production. Wajah belum terdaftar sampai admin mengambil lima sudut.
 

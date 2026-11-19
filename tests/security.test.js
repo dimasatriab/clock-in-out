@@ -143,6 +143,8 @@ test('wajah saja tidak masuk, kunci PIN, dan nama perusahaan aman', async () => 
       json: { phone: '081210000002', pin: '908172' }
     });
     assert.equal(employeeLogin.status, 200, JSON.stringify(employeeLogin.data));
+    assert.equal(employeeLogin.data.admin, false);
+    assert.equal(cookiePair(employeeLogin.setCookie, 'hadir_admin'), '');
     const employeeCookie = cookiePair(employeeLogin.setCookie, 'hadir_karyawan');
     queue.push(face(0.34, 0, 2), face(0.14, 0, 2), face(0.33, 0, 2));
     const stranger = await request(server, {
@@ -159,7 +161,8 @@ test('wajah saja tidak masuk, kunci PIN, dan nama perusahaan aman', async () => 
     const saya = await request(server, { path: '/api/karyawan/saya', cookie: employeeCookie });
     assert.equal(saya.data.karyawan.name, 'Andi Wijaya');
     const adminStill = await request(server, { path: '/api/admin/saya', cookie: employeeCookie });
-    assert.equal(adminStill.status, 401);
+    assert.equal(adminStill.status, 403);
+    assert.equal(adminStill.data.error, 'forbidden');
     for (let i = 0; i < 5; i += 1) {
       const badAdmin = await request(server, {
         method: 'POST',

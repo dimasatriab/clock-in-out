@@ -100,7 +100,8 @@ function clearSessionCookie(res, config, kind) {
 function requireAdmin(req, res) {
   const session = sessionRow(req, 'admin');
   if (!session) {
-    sendError(res, 'unauthorized', 401);
+    const employeeSession = sessionRow(req, 'employee');
+    sendError(res, employeeSession ? 'forbidden' : 'unauthorized', employeeSession ? 403 : 401);
     return null;
   }
   const admin = repo.getAdmin(dbOf(req), session.subject_id);
@@ -325,6 +326,9 @@ export function registerRoutes(app) {
     const matches = verifySecret(pin, row?.pin_hash || dummySecretHash());
     if (!row || !matches) {
       recordLoginFailure(dbOf(req), key);
+      if (isValidPhone(phone) && repo.getAdminByPhone(dbOf(req), phone)) {
+        recordLoginFailure(dbOf(req), `admin:${phone}`);
+      }
       return sendError(res, 'bad_credentials', 401);
     }
     clearLoginFailures(dbOf(req), key);
@@ -333,13 +337,23 @@ export function registerRoutes(app) {
     const expires = new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString();
     repo.createSession(dbOf(req), { tokenHash, kind: 'employee', subjectId: row.id, expiresAt: expires });
     setSessionCookie(res, configOf(req), 'employee', token);
-    sendOk(res, { karyawan: repo.getEmployee(dbOf(req), row.id) });
+    const admin = grantAdminSession(req, res, phone, pin);
+    sendOk(res, { karyawan: repo.getEmployee(dbOf(req), row.id), admin });
   }));
 
   app.post('/api/karyawan/keluar', (req, res) => {
     if (!guardWrite(req, res)) return;
     const session = sessionRow(req, 'employee');
-    if (session) repo.deleteSession(dbOf(req), session.token_hash);
+    if (session) {
+      const employee = repo.getEmployee(dbOf(req), session.subject_id);
+      repo.deleteSession(dbOf(req), session.token_hash);
+      const adminSession = sessionRow(req, 'admin');
+      const admin = employee ? repo.getAdminByPhone(dbOf(req), employee.phone) : null;
+      if (adminSession && admin && adminSession.subject_id === admin.id) {
+        repo.deleteSession(dbOf(req), adminSession.token_hash);
+        clearSessionCookie(res, configOf(req), 'admin');
+      }
+    }
     clearSessionCookie(res, configOf(req), 'employee');
     sendOk(res);
   });
@@ -348,8 +362,11 @@ export function registerRoutes(app) {
     const employee = requireEmployee(req, res);
     if (!employee) return;
     const db = dbOf(req);
+    const adminSession = sessionRow(req, 'admin');
+    const admin = adminSession ? repo.getAdmin(db, adminSession.subject_id) : null;
     sendOk(res, {
       karyawan: employee,
+      admin: Boolean(admin && admin.phone === employee.phone),
       lokasi: repo.assignedLocations(db, employee.id),
       absenTerbuka: repo.openAttendance(db, employee.id)
     });
@@ -857,6 +874,7 @@ function saveEmployeeFromBody(req, id) {
   }
   const existing = repo.getEmployeeByPhone(dbOf(req), phone);
   if (existing && existing.id !== id) return { error: 'phone_taken', status: 409 };
+  const pinHash = pin ? hashSecret(pin) : null;
   const savedId = repo.saveEmployee(dbOf(req), {
     id,
     name,
@@ -866,8 +884,31 @@ function saveEmployeeFromBody(req, id) {
     graceMinutes: grace,
     active: body.active !== false && body.active !== 0 && body.active !== '0',
     locationIds
-  }, pin ? hashSecret(pin) : null);
+  }, pinHash);
+  if (pinHash && repo.getAdminByPhone(dbOf(req), phone)) {
+    repo.updateAdminPin(dbOf(req), repo.getAdminByPhone(dbOf(req), phone).id, pinHash);
+  }
   return { id: savedId };
+}
+
+function grantAdminSession(req, res, phone, pin) {
+  if (!isValidPhone(phone)) return false;
+  const admin = repo.getAdminByPhone(dbOf(req), phone);
+  if (!admin || !verifySecret(pin, admin.pin_hash)) return false;
+  const lockKey = `admin:${phone}`;
+  if (!assertNotLocked(dbOf(req), lockKey).ok || !rateLimit(lockKey, { limit: 5, windowMs: 15 * 60 * 1000 })) {
+    return false;
+  }
+  clearLoginFailures(dbOf(req), lockKey);
+  const { token, tokenHash } = tokenPair();
+  repo.createSession(dbOf(req), {
+    tokenHash,
+    kind: 'admin',
+    subjectId: admin.id,
+    expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()
+  });
+  setSessionCookie(res, configOf(req), 'admin', token);
+  return true;
 }
 
 function locationFromBody(body) {
