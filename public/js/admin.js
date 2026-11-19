@@ -69,7 +69,7 @@ function kerangka() {
   aplikasi.innerHTML = `
     <div class="admin">
       <aside class="samping">
-        <strong>Hadir</strong>
+        <strong>${esc(state.saya.namaPerusahaan || 'DBLESSMYRA')}</strong>
         <div class="mini" style="margin-top:6px">${esc(state.saya.namaPengguna)}</div>
         <nav>
           ${menu.map(([id, label]) => `<button type="button" data-bagian="${id}" class="${state.bagian === id ? 'aktif' : ''}">${label}</button>`).join('')}
@@ -111,7 +111,7 @@ function gambarHari() {
   const ringkas = state.hari.ringkasan;
   const puncak = Math.max(1, ...(state.hari.minggu || []).map((hari) => hari.jumlah));
   return `
-    ${state.saya.perluGantiSandi ? `<div class="peringatan"><strong>Kata sandi masih bawaan percobaan.</strong>
+    ${state.saya.perluGantiSandi ? `<div class="peringatan"><strong>Ganti kata sandi awal sebelum memakai dasbor.</strong>
       <form id="ganti" class="baris" style="margin-top:8px">
         <input name="password" type="password" minlength="8" placeholder="Kata sandi baru" required>
         <button class="tombol" type="submit">Ganti</button>
@@ -168,6 +168,8 @@ function gambarPengaturan() {
   return `
     <h1 style="margin-top:0">Pengaturan</h1>
     <form id="pengaturan" class="kartu">
+      <label>Nama perusahaan</label>
+      <input name="companyName" maxlength="40" required value="${esc(atur.companyName || 'DBLESSMYRA')}">
       <label>Ambang jarak wajah (lebih kecil lebih ketat)</label>
       <input name="faceDistanceThreshold" type="number" min="0.2" max="0.8" step="0.01" value="${esc(atur.faceDistanceThreshold ?? 0.5)}" required>
       <label>Lewati frame (frame skip)</label>
@@ -394,7 +396,7 @@ function pasangAksi(isi) {
     try {
       const hasil = await api('/api/admin/sandi', { method: 'POST', body: { password } });
       state.saya.perluGantiSandi = false;
-      isi.querySelector('#sandi-pesan').textContent = hasil.pesan;
+      await gambar();
     } catch (error) {
       isi.querySelector('#sandi-pesan').textContent = error.message;
     }
@@ -494,6 +496,7 @@ function pasangAksi(isi) {
     const data = new FormData(event.currentTarget);
     const late = String(data.get('lateThreshold') || '09:30:00');
     const body = {
+      companyName: data.get('companyName'),
       faceDistanceThreshold: Number(data.get('faceDistanceThreshold')),
       frameSkip: Number(data.get('frameSkip')),
       confirmationTimeoutSeconds: Number(data.get('confirmationTimeoutSeconds')),

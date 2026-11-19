@@ -7,7 +7,8 @@ export const SETTING_DEFAULTS = {
   autoClockOutTime: '20:00',
   lateThreshold: '09:30:00',
   maxEnrollmentFrames: 12,
-  audioAnnouncements: true
+  audioAnnouncements: true,
+  companyName: 'DBLESSMYRA'
 };
 
 const STORED_KEYS = {
@@ -19,7 +20,8 @@ const STORED_KEYS = {
   autoClockOutTime: 'auto_clockout_time',
   lateThreshold: 'late_threshold',
   maxEnrollmentFrames: 'max_enrollment_frames',
-  audioAnnouncements: 'audio_announcements'
+  audioAnnouncements: 'audio_announcements',
+  companyName: 'company_name'
 };
 
 function clamp(value, min, max) {
@@ -78,8 +80,21 @@ export function normalizeSettings(input = {}, config = {}) {
       40,
       SETTING_DEFAULTS.maxEnrollmentFrames
     )),
-    audioAnnouncements: audio == null ? SETTING_DEFAULTS.audioAnnouncements : audio === true || audio === 1 || audio === '1' || audio === 'true'
+    audioAnnouncements: audio == null ? SETTING_DEFAULTS.audioAnnouncements : audio === true || audio === 1 || audio === '1' || audio === 'true',
+    companyName: companyNameOr(source.companyName ?? source.company_name, SETTING_DEFAULTS.companyName)
   };
+}
+
+export function parseCompanyName(value) {
+  if (value == null) return { ok: true, name: null };
+  const text = String(value).replace(/[\u0000-\u001f]/g, '').trim();
+  if (text.length < 2 || text.length > 40 || /[<>]/.test(text)) return { ok: false };
+  return { ok: true, name: text };
+}
+
+function companyNameOr(value, fallback) {
+  const parsed = parseCompanyName(value == null || value === '' ? fallback : value);
+  return parsed.ok && parsed.name ? parsed.name : fallback;
 }
 
 export function serializeSettings(settings) {

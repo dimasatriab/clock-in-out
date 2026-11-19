@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 import multer from 'multer';
-import { BUSINESSES, DEMO_ADMIN_PASSWORD } from './demo-data.js';
-import { assessEnrollment, assessLiveness, bestFaceDistance, evidenceFrameIndex, identifyFace } from './biometrics.js';
+import { BUSINESSES } from './demo-data.js';
+import { assertNotLocked, clearLoginFailures, recordLoginFailure } from './lockout.js';
+import { isWeakPassword } from './secrets.js';
+import { parseCompanyName } from './settings.js';
+import { assessEnrollment, assessLiveness, bestFaceDistance, evidenceFrameIndex } from './biometrics.js';
 import { faceRuntime } from './face.js';
 import { isTooFlat, measureSharpness } from './sharpness.js';
 import { assertCooldown } from './settings.js';
@@ -104,6 +107,11 @@ function requireAdmin(req, res) {
   const admin = repo.getAdmin(dbOf(req), session.subject_id);
   if (!admin) {
     sendError(res, 'unauthorized', 401);
+    return null;
+  }
+  const allowed = req.path === '/api/admin/sandi' || req.path === '/api/admin/keluar' || req.path === '/api/admin/saya';
+  if (admin.must_change_password === 1 && !allowed) {
+    sendError(res, 'password_change_required', 403);
     return null;
   }
   return admin;
@@ -310,11 +318,17 @@ export function registerRoutes(app) {
     if (!guardWrite(req, res)) return;
     const phone = normalizePhone(req.body?.phone);
     const pin = String(req.body?.pin || '');
-    const key = `karyawan:${clientIp(req)}:${phone}`;
-    if (!rateLimit(key, { limit: 8, windowMs: 15 * 60 * 1000 })) return sendError(res, 'rate_limited', 429);
+    const key = `pin:${phone || clientIp(req)}`;
+    if (!assertNotLocked(dbOf(req), key).ok || !rateLimit(key, { limit: 8, windowMs: 15 * 60 * 1000 })) {
+      return sendError(res, 'locked', 429);
+    }
     const row = isValidPhone(phone) ? repo.getEmployeeByPhone(dbOf(req), phone) : null;
     const matches = verifySecret(pin, row?.pin_hash || dummySecretHash());
-    if (!row || !matches) return sendError(res, 'bad_credentials', 401);
+    if (!row || !matches) {
+      recordLoginFailure(dbOf(req), key);
+      return sendError(res, 'bad_credentials', 401);
+    }
+    clearLoginFailures(dbOf(req), key);
     if (row.active !== 1) return sendError(res, 'inactive', 403);
     const { token, tokenHash } = tokenPair();
     const expires = new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString();
@@ -447,19 +461,40 @@ export function registerRoutes(app) {
       return sendError(res, 'rate_limited', 429);
     }
     const settings = repo.getSettings(dbOf(req), configOf(req));
-    const catalog = repo.faceCatalog(dbOf(req));
-    if (!catalog.length) return sendError(res, 'face_not_enrolled');
+    const bound = sessionRow(req, 'employee');
+    let employee = bound ? repo.getEmployee(dbOf(req), bound.subject_id) : null;
+    let issuedByPin = false;
+    if (!employee) {
+      const phone = normalizePhone(req.body?.phone);
+      const pin = String(req.body?.pin || '');
+      if (!phone || !pin) return sendError(res, 'perlu_faktor', 401);
+      const lockKey = `pin:${phone}`;
+      if (!assertNotLocked(dbOf(req), lockKey).ok) return sendError(res, 'locked', 429);
+      const row = isValidPhone(phone) ? repo.getEmployeeByPhone(dbOf(req), phone) : null;
+      const matches = verifySecret(pin, row?.pin_hash || dummySecretHash());
+      if (!row || !matches) {
+        recordLoginFailure(dbOf(req), lockKey);
+        return sendError(res, 'bad_credentials', 401);
+      }
+      if (row.active !== 1) return sendError(res, 'inactive', 403);
+      clearLoginFailures(dbOf(req), lockKey);
+      employee = repo.getEmployee(dbOf(req), row.id);
+      issuedByPin = true;
+    }
+    if (!employee?.active) return sendError(res, 'inactive', 403);
     const checked = validateFrames(req.files);
     if (checked.error) return sendError(res, checked.error === 'need_three_faces' ? 'liveness_failed' : checked.error);
+    const samples = repo.faceSamples(dbOf(req), employee.id);
+    if (samples.length < 2) return sendError(res, 'face_not_enrolled');
     const read = await readFaces(req.files, settings.sharpnessMin);
     if (read.error) return sendError(res, read.error === 'need_three_faces' ? 'liveness_failed' : read.error);
     const liveness = assessLiveness(read.frames);
     if (!liveness.ok) return sendError(res, liveness.error || 'liveness_failed');
     const evidenceIndex = evidenceFrameIndex(read.frames, liveness.method);
-    const found = identifyFace(read.frames[evidenceIndex].descriptor, catalog, settings.faceDistanceThreshold);
-    if (!found.ok) return sendError(res, found.error);
-    const employee = repo.getEmployee(dbOf(req), found.id);
-    if (!employee || !employee.active) return sendError(res, 'inactive', 403);
+    const faceDistance = bestFaceDistance(read.frames[evidenceIndex].descriptor, samples.map((sample) => sample.descriptor));
+    if (!Number.isFinite(faceDistance) || faceDistance > settings.faceDistanceThreshold) {
+      return sendError(res, 'face_mismatch', 400, { nama: employee.name });
+    }
     const now = new Date();
     const cooled = assertCooldown(repo.lastPunchAt(dbOf(req), employee.id), now, settings.detectionCooldownSeconds);
     if (!cooled.ok) return sendError(res, 'cooldown', 429, { detik: cooled.remaining, nama: employee.name });
@@ -473,18 +508,20 @@ export function registerRoutes(app) {
     const { token, tokenHash } = tokenPair();
     const expires = new Date(Date.now() + 3 * 60 * 1000).toISOString();
     repo.createChallenge(dbOf(req), { tokenHash, employeeId: employee.id, expiresAt: expires });
-    const session = tokenPair();
-    repo.createSession(dbOf(req), {
-      tokenHash: session.tokenHash,
-      kind: 'employee',
-      subjectId: employee.id,
-      expiresAt: new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString()
-    });
-    setSessionCookie(res, configOf(req), 'employee', session.token);
+    if (issuedByPin) {
+      const session = tokenPair();
+      repo.createSession(dbOf(req), {
+        tokenHash: session.tokenHash,
+        kind: 'employee',
+        subjectId: employee.id,
+        expiresAt: new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString()
+      });
+      setSessionCookie(res, configOf(req), 'employee', session.token);
+    }
     sendOk(res, {
       nama: employee.name,
       karyawanId: employee.id,
-      jarak: Math.round(found.distance * 1000) / 1000,
+      jarak: Math.round(faceDistance * 1000) / 1000,
       sesiTerbuka: Boolean(open),
       token,
       kedaluwarsa: expires
@@ -495,12 +532,17 @@ export function registerRoutes(app) {
     if (!guardWrite(req, res)) return;
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '');
-    if (!rateLimit(`admin:${clientIp(req)}:${username}`, { limit: 8, windowMs: 15 * 60 * 1000 })) {
-      return sendError(res, 'rate_limited', 429);
+    const lockKey = `admin:${username || clientIp(req)}`;
+    if (!assertNotLocked(dbOf(req), lockKey).ok || !rateLimit(lockKey, { limit: 8, windowMs: 15 * 60 * 1000 })) {
+      return sendError(res, 'locked', 429);
     }
     const admin = repo.getAdminByUsername(dbOf(req), username);
     const matches = verifySecret(password, admin?.password_hash || dummySecretHash());
-    if (!admin || !matches) return sendError(res, 'admin_bad_credentials', 401);
+    if (!admin || !matches) {
+      recordLoginFailure(dbOf(req), lockKey);
+      return sendError(res, 'admin_bad_credentials', 401);
+    }
+    clearLoginFailures(dbOf(req), lockKey);
     const { token, tokenHash } = tokenPair();
     repo.createSession(dbOf(req), {
       tokenHash,
@@ -509,7 +551,7 @@ export function registerRoutes(app) {
       expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()
     });
     setSessionCookie(res, configOf(req), 'admin', token);
-    sendOk(res, { namaPengguna: admin.username, perluGantiSandi: verifySecret(DEMO_ADMIN_PASSWORD, admin.password_hash) });
+    sendOk(res, { namaPengguna: admin.username, perluGantiSandi: admin.must_change_password === 1 });
   });
 
   app.post('/api/admin/keluar', (req, res) => {
@@ -524,10 +566,12 @@ export function registerRoutes(app) {
     const admin = requireAdmin(req, res);
     if (!admin) return;
     const config = configOf(req);
+    const settings = repo.getSettings(dbOf(req), config);
     sendOk(res, {
       namaPengguna: admin.username,
-      perluGantiSandi: verifySecret(DEMO_ADMIN_PASSWORD, admin.password_hash),
-      jarakWajahMaks: repo.getSettings(dbOf(req), config).faceDistanceThreshold,
+      namaPerusahaan: settings.companyName,
+      perluGantiSandi: admin.must_change_password === 1,
+      jarakWajahMaks: settings.faceDistanceThreshold,
       akurasiGpsMaks: config.maxGpsAccuracy
     });
   });
@@ -540,7 +584,8 @@ export function registerRoutes(app) {
       detectionCooldownSeconds: settings.detectionCooldownSeconds,
       sharpnessMin: settings.sharpnessMin,
       audioAnnouncements: settings.audioAnnouncements,
-      lateThreshold: settings.lateThreshold
+      lateThreshold: settings.lateThreshold,
+      companyName: settings.companyName
     });
   });
 
@@ -549,9 +594,34 @@ export function registerRoutes(app) {
     sendOk(res, repo.getSettings(dbOf(req), configOf(req)));
   });
 
+  app.get('/manifest.webmanifest', (req, res) => {
+    const name = repo.getSettings(dbOf(req), configOf(req)).companyName;
+    res.type('application/manifest+json');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      name: `${name} — Attendance`,
+      short_name: name,
+      description: 'Absen masuk dan pulang dengan swafoto serta lokasi.',
+      start_url: '/',
+      scope: '/',
+      display: 'standalone',
+      background_color: '#ffffff',
+      theme_color: '#ffffff',
+      lang: 'id',
+      icons: [
+        { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+      ]
+    });
+  });
+
   app.put('/api/admin/pengaturan', (req, res) => {
     if (!guardWrite(req, res)) return;
     if (!requireAdmin(req, res)) return;
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'companyName')) {
+      const parsed = parseCompanyName(req.body.companyName);
+      if (!parsed.ok) return sendError(res, 'bad_request');
+    }
     const settings = repo.saveSettings(dbOf(req), req.body || {}, configOf(req));
     sendOk(res, { ...settings, pesan: 'Pengaturan disimpan.' });
   });
@@ -561,7 +631,9 @@ export function registerRoutes(app) {
     const admin = requireAdmin(req, res);
     if (!admin) return;
     const password = String(req.body?.password || '');
-    if (password.length < 8 || password === DEMO_ADMIN_PASSWORD) return sendError(res, 'password_weak');
+    if (password.length < 8 || isWeakPassword(password) || verifySecret(password, admin.password_hash)) {
+      return sendError(res, 'password_weak');
+    }
     repo.updateAdminPassword(dbOf(req), admin.id, hashSecret(password));
     sendOk(res, { pesan: 'Kata sandi admin diperbarui.' });
   });

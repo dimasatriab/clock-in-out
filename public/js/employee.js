@@ -237,8 +237,13 @@ async function layarDepan() {
   layar.innerHTML = '';
   kamera.hidden = false;
   clearInterval(tick);
-  setStatus('Ready', 'ready');
+    setStatus('Ready', 'ready');
   posisi().catch(() => {});
+  const pengaturanAwal = await api('/api/kiosk/pengaturan').catch(() => null);
+  const merek = pengaturanAwal?.companyName || 'DBLESSMYRA';
+  const judul = document.querySelector('#merek');
+  if (judul) judul.textContent = merek;
+  document.title = `${merek} — Attendance`;
   try {
     await ensureModels((teks) => {
       if (masihLayar(token) && !signal.aborted) setStatus(teks, 'scanning');
@@ -247,15 +252,15 @@ async function layarDepan() {
     if (!stream) stream = await openCamera(video);
     if (!masihLayar(token) || signal.aborted) return;
     setStatus('Ready', 'ready');
-    await pindai(signal, token);
+    await pindai(signal, token, pengaturanAwal);
   } catch (error) {
     if (!masihLayar(token) || signal.aborted || error.name === 'AbortError') return;
     setStatus(error.message || 'Kamera depan tidak siap.', 'error');
   }
 }
 
-async function pindai(signal, token) {
-  const pengaturan = await api('/api/kiosk/pengaturan').catch(() => ({
+async function pindai(signal, token, awal) {
+  const pengaturan = awal || await api('/api/kiosk/pengaturan').catch(() => ({
     frameSkip: 3,
     confirmationTimeoutSeconds: 10,
     audioAnnouncements: true

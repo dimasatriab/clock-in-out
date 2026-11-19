@@ -22,8 +22,10 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
   process.env.DATA_DIR = dir;
   process.env.NODE_ENV = 'test';
   process.env.COOKIE_SECURE = '0';
-  process.env.DEMO_ADMIN_USER = 'admin';
-  process.env.DEMO_ADMIN_PASSWORD = 'demo-admin-123';
+  process.env.DEMO = '1';
+  process.env.DEMO_PIN = '908172';
+  process.env.ADMIN_USER = 'admin';
+  process.env.ADMIN_PASSWORD = 'test-admin-pass';
   process.env.FACE_MATCH_MAX_DISTANCE = '0.5';
   process.env.MAX_GPS_ACCURACY_METERS = '100';
 
@@ -55,11 +57,18 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
     const adminLogin = await request(server, {
       method: 'POST',
       path: '/api/admin/masuk',
-      json: { username: 'admin', password: 'demo-admin-123' }
+      json: { username: 'admin', password: 'test-admin-pass' }
     });
     assert.equal(adminLogin.status, 200);
     assert.equal(adminLogin.data.perluGantiSandi, true);
     const adminCookie = cookiePair(adminLogin.setCookie, 'hadir_admin');
+    const ganti = await request(server, {
+      method: 'POST',
+      path: '/api/admin/sandi',
+      cookie: adminCookie,
+      json: { password: 'ganti-admin-9' }
+    });
+    assert.equal(ganti.status, 200, JSON.stringify(ganti.data));
     const pengaturan = await request(server, {
       method: 'PUT',
       path: '/api/admin/pengaturan',
@@ -77,7 +86,7 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
     const employeeLogin = await request(server, {
       method: 'POST',
       path: '/api/karyawan/masuk',
-      json: { phone: '081210000001', pin: '123456' }
+      json: { phone: '081210000001', pin: '908172' }
     });
     assert.equal(employeeLogin.status, 200);
     const employeeCookie = cookiePair(employeeLogin.setCookie, 'hadir_karyawan');
@@ -218,7 +227,7 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
     const andi = await request(server, {
       method: 'POST',
       path: '/api/karyawan/masuk',
-      json: { phone: '081210000002', pin: '123456' }
+      json: { phone: '081210000002', pin: '908172' }
     });
     const hidden = await request(server, {
       path: `/api/foto/absensi/${clockIn.data.absensi.id}/masuk`,
@@ -264,7 +273,7 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
     const blocked = await request(server, {
       method: 'POST',
       path: '/api/karyawan/masuk',
-      json: { phone: '081210000001', pin: '123456' }
+      json: { phone: '081210000001', pin: '908172' }
     });
     assert.equal(blocked.status, 403);
     assert.equal(blocked.data.error, 'inactive');

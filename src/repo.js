@@ -10,14 +10,17 @@ export function seedIfEmpty(db, config) {
   for (const business of BUSINESSES) insertBusiness.run(business.id, business.name);
 
   const adminCount = db.prepare('SELECT COUNT(*) AS n FROM admins').get().n;
-  if (adminCount > 0) return { seeded: false };
-
   const now = new Date().toISOString();
-  db.prepare('INSERT INTO admins (username, password_hash, created_at) VALUES (?, ?, ?)').run(
-    config.demoAdminUser,
-    hashSecret(config.demoAdminPassword),
-    now
-  );
+  if (adminCount === 0 && config.adminPassword) {
+    db.prepare('INSERT INTO admins (username, password_hash, must_change_password, created_at) VALUES (?, ?, 1, ?)').run(
+      config.adminUser,
+      hashSecret(config.adminPassword),
+      now
+    );
+  }
+  if (!config.demo || !/^\d{4,6}$/.test(config.demoPin || '')) return { seeded: adminCount === 0 };
+  const employeeCount = db.prepare('SELECT COUNT(*) AS n FROM employees').get().n;
+  if (employeeCount > 0) return { seeded: false };
 
   const insertLocation = db.prepare(`
     INSERT INTO locations (business_id, name, latitude, longitude, radius_meters, active, created_at)
@@ -45,7 +48,7 @@ export function seedIfEmpty(db, config) {
     const result = insertEmployee.run(
       employee.name,
       employee.phone,
-      hashSecret(employee.pin),
+      hashSecret(config.demoPin),
       employee.businessId,
       employee.shiftStart,
       employee.graceMinutes,
@@ -98,7 +101,7 @@ export function getAdmin(db, id) {
 }
 
 export function updateAdminPassword(db, id, passwordHash) {
-  db.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').run(passwordHash, id);
+  db.prepare('UPDATE admins SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(passwordHash, id);
 }
 
 export function getEmployeeByPhone(db, phone) {

@@ -17,18 +17,13 @@ npm start
 
 Buka <http://localhost:3000> untuk karyawan dan <http://localhost:3000/admin> untuk admin. `localhost` sudah aman untuk kamera. Alamat IP seperti `http://192.168.x.x` tidak diizinkan browser untuk kamera dan GPS.
 
-## Akun percobaan
+## Akun
 
-Hanya ada di basis data kosong pertama kali. **Ganti sebelum server bisa diakses orang lain.** Dasbor admin menandai kata sandi bawaan.
+Tidak ada sandi atau PIN bawaan di repo. Di `.env`, isi `ADMIN_PASSWORD` (minimal 8 karakter). Server production menolak jalan jika sandi itu kosong, terlalu pendek, atau sandi umum, dan menolak `DEMO=1`.
 
-| Peran | Masuk | Rahasia |
-| --- | --- | --- |
-| Admin | `admin` | `demo-admin-123` |
-| Nisa Putri (toko) | `081210000001` | PIN `123456` |
-| Andi Wijaya (unit) | `081210000002` | PIN `123456` |
-| Sri Rahayu (rumah) | `081210000003` | PIN `123456` |
+Admin pertama dibuat dari `ADMIN_USER` dan `ADMIN_PASSWORD`, lalu wajib mengganti sandi itu sebelum dasbor bisa dipakai. PIN karyawan di-hash.
 
-Tiga lokasi awal bertanda **(contoh)** di sekitar Jakarta. Itu bukan alamat usaha sungguhan. Wajah belum terdaftar: admin membuka **Daftarkan wajah** di ponsel karyawan, mengambil 3 swafoto dari sudut berbeda, baru karyawan bisa absen.
+Data percobaan (tiga lokasi contoh dan tiga karyawan) hanya muncul jika `DEMO=1` dan `DEMO_PIN` diisi, dan tidak pernah di production. Wajah belum terdaftar sampai admin mengambil lima sudut.
 
 Foto bukti tersimpan di `data/uploads/` dan tidak masuk git.
 
@@ -49,7 +44,7 @@ Foto bukti tersimpan di `data/uploads/` dan tidak masuk git.
 cp .env.example .env
 ```
 
-4. Di `.env`, ganti `DEMO_ADMIN_PASSWORD`, isi `DOMAIN=absen.domain-anda.com`, lalu set `COOKIE_SECURE=1` dan `TRUST_PROXY=1`.
+4. Di `.env`, isi `ADMIN_PASSWORD` yang kuat, `DOMAIN=absen.domain-anda.com`, lalu set `COOKIE_SECURE=1`, `TRUST_PROXY=1`, dan `NODE_ENV=production`. Jangan set `DEMO=1`.
 5. Jalankan:
 
 ```bash

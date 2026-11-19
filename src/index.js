@@ -9,7 +9,13 @@ import { prepareAssets } from '../scripts/prepare-assets.js';
 
 loadEnv(path.resolve('.env'));
 
-const app = await createApp();
+let app;
+try {
+  app = await createApp();
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
 const config = getConfig();
 
 try {

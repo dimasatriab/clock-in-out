@@ -4,8 +4,6 @@ export const BUSINESSES = [
   { id: 'rumah', name: 'Rumah' }
 ];
 
-export const DEMO_ADMIN_PASSWORD = 'demo-admin-123';
-
 export const DEMO_LOCATIONS = [
   {
     name: 'Toko DBLESS MYRA (contoh)',
@@ -34,7 +32,6 @@ export const DEMO_EMPLOYEES = [
   {
     name: 'Nisa Putri',
     phone: '081210000001',
-    pin: '123456',
     businessId: 'toko',
     shiftStart: '09:00',
     graceMinutes: 10,
@@ -43,7 +40,6 @@ export const DEMO_EMPLOYEES = [
   {
     name: 'Andi Wijaya',
     phone: '081210000002',
-    pin: '123456',
     businessId: 'hostbydims',
     shiftStart: '08:00',
     graceMinutes: 15,
@@ -52,7 +48,6 @@ export const DEMO_EMPLOYEES = [
   {
     name: 'Sri Rahayu',
     phone: '081210000003',
-    pin: '123456',
     businessId: 'rumah',
     shiftStart: '07:00',
     graceMinutes: 10,

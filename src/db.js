@@ -15,7 +15,14 @@ CREATE TABLE IF NOT EXISTS admins (
   id INTEGER PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  must_change_password INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  key TEXT PRIMARY KEY,
+  failures INTEGER NOT NULL,
+  locked_until TEXT
 );
 
 CREATE TABLE IF NOT EXISTS locations (
