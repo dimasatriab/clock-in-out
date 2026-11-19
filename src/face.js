@@ -76,7 +76,8 @@ function metricsFromLandmarks(landmarks) {
   const tip = nose[6] || nose[nose.length - 1];
   const eyeDistance = Math.max(Math.hypot(rightCenter.x - leftCenter.x, rightCenter.y - leftCenter.y), 1e-6);
   const yaw = (tip.x - (leftCenter.x + rightCenter.x) / 2) / eyeDistance;
-  return { ear, yaw };
+  const pitch = ((tip.y - (leftCenter.y + rightCenter.y) / 2) / eyeDistance) - 0.55;
+  return { ear, yaw, pitch };
 }
 
 async function detectLoaded(buffer) {

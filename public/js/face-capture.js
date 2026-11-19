@@ -123,7 +123,9 @@ function metrics(landmarks) {
   const nose = landmarks.getNose();
   const tip = nose[6] || nose[nose.length - 1];
   const eyeDistance = Math.max(Math.hypot(rightCenter.x - leftCenter.x, rightCenter.y - leftCenter.y), 1e-6);
-  return { ear, yaw: (tip.x - (leftCenter.x + rightCenter.x) / 2) / eyeDistance };
+  const yaw = (tip.x - (leftCenter.x + rightCenter.x) / 2) / eyeDistance;
+  const pitch = ((tip.y - (leftCenter.y + rightCenter.y) / 2) / eyeDistance) - 0.55;
+  return { ear, yaw, pitch };
 }
 
 export function snapshot(video) {
@@ -178,12 +180,14 @@ function pickLiveness(samples) {
   return null;
 }
 
-export function watchLiveness(video, { onStatus, signal }) {
+export function watchLiveness(video, { onStatus, onBox, signal, frameSkip = 1 }) {
   const faceapi = window.faceapi;
   const options = new faceapi.TinyFaceDetectorOptions(OPTIONS);
-  const samples = [];
-  let stopped = false;
-  let busy = false;
+    const samples = [];
+    let stopped = false;
+    let busy = false;
+    let ticks = 0;
+    const skip = Math.max(1, Number(frameSkip) || 1);
   return new Promise((resolve, reject) => {
     const batalkan = () => {
       if (stopped) return;
@@ -199,13 +203,22 @@ export function watchLiveness(video, { onStatus, signal }) {
     signal?.addEventListener('abort', batalkan);
     const loop = async () => {
       if (stopped) return;
+      ticks += 1;
+      if (ticks % skip !== 0) {
+        requestAnimationFrame(loop);
+        return;
+      }
       if (!busy) {
         busy = true;
         try {
           const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks();
           if (stopped) return;
-          if (!detection) onStatus?.('Ready', 'ready');
-          else {
+          if (!detection) {
+            onBox?.(null);
+            onStatus?.('Ready', 'ready');
+          } else {
+            const box = detection.detection.box;
+            onBox?.({ x: box.x, y: box.y, width: box.width, height: box.height });
             onStatus?.('Wajah terlihat. Kedipkan mata sekali, atau gelengkan kepala pelan.', 'scanning');
             const reading = metrics(detection.landmarks);
             const blob = await snapshot(video);
@@ -294,11 +307,48 @@ export function waitUntilNoFace(video, { signal, holdMs = 800 } = {}) {
   });
 }
 
+export function imageSharpness(source) {
+  const width = 240;
+  const height = Math.max(1, Math.round((source.videoHeight || source.height) * width / Math.max(source.videoWidth || source.width, 1)));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(source, 0, 0, width, height);
+  const data = context.getImageData(0, 0, width, height).data;
+  let sum = 0;
+  let sumSq = 0;
+  let count = 0;
+  const gray = (x, y) => {
+    const index = (y * width + x) * 4;
+    return data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+  };
+  for (let y = 1; y < height - 1; y += 2) {
+    for (let x = 1; x < width - 1; x += 2) {
+      const center = gray(x, y);
+      const lap = gray(x, y - 1) + gray(x, y + 1) + gray(x - 1, y) + gray(x + 1, y) - 4 * center;
+      sum += lap;
+      sumSq += lap * lap;
+      count += 1;
+    }
+  }
+  if (count < 8) return 0;
+  const mean = sum / count;
+  return sumSq / count - mean * mean;
+}
+
 export async function capturePose(video) {
   const faceapi = window.faceapi;
   const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions(OPTIONS)).withFaceLandmarks();
   if (!detection) return null;
   const blob = await snapshot(video);
   if (!blob) return null;
-  return { blob, ...metrics(detection.landmarks) };
+  const box = detection.detection.box;
+  return {
+    blob,
+    score: detection.detection.score,
+    sharpness: imageSharpness(video),
+    box: { width: box.width, height: box.height },
+    ...metrics(detection.landmarks)
+  };
 }

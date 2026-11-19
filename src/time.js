@@ -51,6 +51,44 @@ export function jakartaMidnightUtc(label) {
   return new Date(Date.UTC(year, month - 1, day, -7, 0, 0, 0));
 }
 
+export function clockSeconds(value) {
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(value || ''));
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const second = Number(match[3] || 0);
+  if (hour > 23 || minute > 59 || second > 59) return null;
+  return hour * 3600 + minute * 60 + second;
+}
+
+export function wibDateTime(dateLabel, clock) {
+  const seconds = clockSeconds(clock);
+  if (!isDateLabel(dateLabel) || seconds == null) return null;
+  return new Date(jakartaMidnightUtc(dateLabel).getTime() + seconds * 1000).toISOString();
+}
+
+export function staleClockOutIso(clockInIso, autoTime) {
+  const day = jakartaDateLabel(new Date(clockInIso));
+  const autoIso = wibDateTime(day, autoTime);
+  if (autoIso && new Date(autoIso).getTime() > new Date(clockInIso).getTime()) return autoIso;
+  return wibDateTime(day, '23:59:00');
+}
+
+export function arrivalFlag(clockInIso, { lateThreshold = '09:30:00', shiftStart = null } = {}) {
+  const parts = jakartaParts(new Date(clockInIso));
+  const actual = parts.hour * 3600 + parts.minute * 60 + parts.second;
+  const late = clockSeconds(lateThreshold);
+  const shift = clockSeconds(shiftStart);
+  if (late != null && actual > late) return 'terlambat';
+  if (shift != null && actual < shift) return 'awal';
+  return 'tepat';
+}
+
+export function sumCompletedHours(records) {
+  const total = (records || []).reduce((sum, record) => sum + (record.hoursWorked || 0), 0);
+  return Math.round(total * 100) / 100;
+}
+
 export function shiftToMinutes(shiftStart) {
   if (!shiftStart) return null;
   const match = /^(\d{2}):(\d{2})$/.exec(shiftStart);

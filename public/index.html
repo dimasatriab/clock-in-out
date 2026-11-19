@@ -26,6 +26,7 @@
         <div class="depan-grup">
           <div class="lingkar">
             <video id="video" autoplay muted playsinline></video>
+            <canvas id="kotak-wajah"></canvas>
           </div>
           <p class="depan-status">
             <span id="lampu" class="titik siap"></span>
@@ -34,10 +35,17 @@
         </div>
       </div>
       <div class="depan-kaki">
+        <div id="konfirmasi" class="konfirmasi" hidden>
+          <p id="konfirmasi-nama" class="nama-konfirmasi"></p>
+          <p id="konfirmasi-hitung" class="mini"></p>
+          <button id="konfirmasi-masuk" class="tombol-masuk" type="button">Clock In</button>
+          <button id="konfirmasi-pulang" class="tombol-pulang" type="button">Clock Out</button>
+        </div>
         <p class="pin-label" id="pin-label">login with pin</p>
         <button class="tombol-garis" id="kamera-pin" type="button" aria-labelledby="pin-label"></button>
       </div>
     </div>
+    <div id="pita" class="pita" hidden></div>
   </div>
   <script type="module" src="/js/employee.js"></script>
 </body>

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { migrateSqlite } from './migrate.js';
 
 const SCHEMA = `
 PRAGMA foreign_keys = ON;
@@ -51,6 +52,11 @@ CREATE TABLE IF NOT EXISTS face_samples (
   employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
   descriptor TEXT NOT NULL,
   image_path TEXT NOT NULL,
+  pose TEXT,
+  quality_score REAL,
+  sharpness REAL,
+  yaw REAL,
+  pitch REAL,
   created_at TEXT NOT NULL
 );
 
@@ -78,7 +84,18 @@ CREATE TABLE IF NOT EXISTS attendance (
   out_face_distance REAL,
   out_liveness TEXT,
   late_minutes INTEGER,
+  out_auto INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -109,6 +126,7 @@ export function openDatabase(config) {
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA busy_timeout = 5000');
   db.exec(SCHEMA);
+  migrateSqlite(db);
   return db;
 }
 

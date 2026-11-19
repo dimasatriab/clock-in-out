@@ -13,8 +13,8 @@ function descriptor(shift = 0) {
   return values;
 }
 
-function face(ear, yaw, shift = 0) {
-  return { descriptor: descriptor(shift), ear, yaw, score: 0.9, box: { width: 180, height: 200 } };
+function face(ear, yaw, shift = 0, pitch = 0) {
+  return { descriptor: descriptor(shift), ear, yaw, pitch, score: 0.9, box: { width: 180, height: 200 } };
 }
 
 test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
@@ -60,6 +60,13 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
     assert.equal(adminLogin.status, 200);
     assert.equal(adminLogin.data.perluGantiSandi, true);
     const adminCookie = cookiePair(adminLogin.setCookie, 'hadir_admin');
+    const pengaturan = await request(server, {
+      method: 'PUT',
+      path: '/api/admin/pengaturan',
+      cookie: adminCookie,
+      json: { detectionCooldownSeconds: 0 }
+    });
+    assert.equal(pengaturan.status, 200, JSON.stringify(pengaturan.data));
 
     const karyawan = await request(server, { path: '/api/admin/karyawan', cookie: adminCookie });
     const nisa = karyawan.data.karyawan.find((item) => item.name === 'Nisa Putri');
@@ -121,20 +128,21 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
     assert.equal(queue.length, 3);
     queue.length = 0;
 
-    const enrollShots = [makeJpeg(4), makeJpeg(5), makeJpeg(6)].map((buffer, index) => ({
+    const poseNama = ['lurus', 'kiri', 'kanan', 'atas', 'bawah'];
+    const enrollShots = [4, 5, 6, 7, 8].map((seed, index) => ({
       field: 'foto',
       filename: `daftar-${index}.jpg`,
-      buffer
+      buffer: makeJpeg(seed)
     }));
-    queue.push(face(0.3, -0.22), face(0.31, 0.02), face(0.29, 0.2));
+    queue.push(face(0.3, 0, 0, 0), face(0.3, -0.22, 0, 0), face(0.3, 0.22, 0, 0), face(0.3, 0, 0, -0.12), face(0.3, 0, 0, 0.12));
     const enrolled = await request(server, {
       method: 'POST',
       path: `/api/admin/karyawan/${nisa.id}/wajah`,
       cookie: adminCookie,
-      form: multipart({}, enrollShots)
+      form: multipart({ pose: poseNama }, enrollShots)
     });
     assert.equal(enrolled.status, 200, JSON.stringify(enrolled.data));
-    assert.equal(enrolled.data.karyawan.faceSampleCount, 3);
+    assert.equal(enrolled.data.karyawan.faceSampleCount, 5);
 
     const inaccurate = await absen({
       ...baseFields,

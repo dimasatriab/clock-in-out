@@ -3,6 +3,9 @@ import multer from 'multer';
 import { BUSINESSES, DEMO_ADMIN_PASSWORD } from './demo-data.js';
 import { assessEnrollment, assessLiveness, bestFaceDistance, evidenceFrameIndex, identifyFace } from './biometrics.js';
 import { faceRuntime } from './face.js';
+import { isTooFlat, measureSharpness } from './sharpness.js';
+import { assertCooldown } from './settings.js';
+import { normalizeImportRow, parseAttendanceTable } from './import-attendance.js';
 import { matchGeofence } from './geo.js';
 import { validateJpeg } from './images.js';
 import { clientIp, hashToken, readCookies, sameOrigin, sendError, sendOk, tokenPair, wantsJson } from './http.js';
@@ -12,13 +15,13 @@ import { removeUpload, resolveUpload, saveJpeg } from './photos.js';
 import { rateLimit } from './rate-limit.js';
 import { evaluateClock } from './rules.js';
 import { EXPORT_HEADERS, toCsv, toSpreadsheetMl } from './csv.js';
-import { formatDurasi, formatWibDate, formatWibTime, isDateLabel, defaultRange, jakartaMidnightUtc } from './time.js';
+import { arrivalFlag, formatDurasi, formatWibDate, formatWibTime, isDateLabel, defaultRange, jakartaMidnightUtc, wibDateTime } from './time.js';
 import { shiftToMinutes } from './time.js';
 import * as repo from './repo.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 1_500_000, files: 3 }
+  limits: { fileSize: 1_500_000, files: 40 }
 });
 
 function asyncRoute(fn) {
@@ -30,8 +33,8 @@ function asyncRoute(fn) {
   };
 }
 
-function acceptFiles(field) {
-  const parse = upload.array(field, 3);
+function acceptFiles(field, max = 3) {
+  const parse = upload.array(field, max);
   return (req, res, next) => {
     parse(req, res, (error) => {
       if (error) return sendError(res, 'bad_image');
@@ -207,7 +210,8 @@ function resolveRange(query) {
   return { dari, sampai };
 }
 
-function exportRows(records) {
+function exportRows(records, employees = [], settings = {}) {
+  const shifts = new Map(employees.map((employee) => [employee.id, employee.shiftStart]));
   return records.map((record) => [
     formatWibDate(record.clockInAt),
     record.employeeName,
@@ -227,7 +231,9 @@ function exportRows(records) {
     record.outAccuracy ?? '',
     record.outLat ?? '',
     record.outLng ?? '',
-    record.outFaceDistance == null ? '' : Number(record.outFaceDistance.toFixed(3))
+    record.outFaceDistance == null ? '' : Number(record.outFaceDistance.toFixed(3)),
+    record.outAuto ? 'ya' : '',
+    arrivalFlag(record.clockInAt, { lateThreshold: settings.lateThreshold, shiftStart: shifts.get(record.employeeId) })
   ]);
 }
 
@@ -243,14 +249,45 @@ function validateFrames(files) {
   return { ok: true };
 }
 
-async function readFaces(files) {
+function asList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item));
+  if (value == null || value === '') return [];
+  return [String(value)];
+}
+
+async function readFaces(files, sharpnessMin = 0) {
   const checked = validateFrames(files);
   if (checked.error) return checked;
   const frames = [];
   for (const file of files) {
     const face = await faceRuntime.detect(file.buffer);
     if (face.error) return { error: face.error };
-    frames.push({ ...face, buffer: file.buffer });
+    const sharp = measureSharpness(file.buffer);
+    if (isTooFlat(sharp, sharpnessMin)) return { error: 'photo_flat' };
+    frames.push({ ...face, sharpness: sharp.variance, buffer: file.buffer });
+  }
+  return { frames };
+}
+
+async function readEnrollment(files, poses, sharpnessMin) {
+  if (!files?.length || files.length !== poses.length) return { error: 'need_pose_set' };
+  const hashes = new Set();
+  const frames = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const image = validateJpeg(files[index].buffer);
+    if (!image.ok) return { error: image.error };
+    if (hashes.has(image.hash)) return { error: 'duplicate_image' };
+    hashes.add(image.hash);
+    const face = await faceRuntime.detect(files[index].buffer);
+    if (face.error) return { error: face.error };
+    const sharp = measureSharpness(files[index].buffer);
+    if (isTooFlat(sharp, sharpnessMin)) return { error: 'photo_flat' };
+    frames.push({
+      ...face,
+      sharpness: sharp.variance,
+      pose: poses[index],
+      buffer: files[index].buffer
+    });
   }
   return { frames };
 }
@@ -357,10 +394,13 @@ export function registerRoutes(app) {
     );
     if (!geofence.ok) return sendError(res, geofence.error, 400, { akurasi: geofence.accuracy });
     const now = new Date();
+    const settings = repo.getSettings(dbOf(req), configOf(req));
+    const cooled = assertCooldown(repo.lastPunchAt(dbOf(req), employee.id), now, settings.detectionCooldownSeconds);
+    if (!cooled.ok) return sendError(res, 'cooldown', 429, { detik: cooled.remaining });
     const consumed = repo.consumeChallenge(dbOf(req), hashToken(token), employee.id, now.toISOString());
     if (!consumed) return sendError(res, 'challenge');
 
-    const read = await readFaces(req.files);
+    const read = await readFaces(req.files, settings.sharpnessMin);
     if (read.error) return sendError(res, read.error === 'need_three_faces' ? 'liveness_failed' : read.error);
     const liveness = assessLiveness(read.frames);
     const evidenceIndex = liveness.ok ? evidenceFrameIndex(read.frames, liveness.method) : 0;
@@ -373,7 +413,7 @@ export function registerRoutes(app) {
       openAttendance: open,
       geofence,
       faceDistance,
-      maxFaceDistance: configOf(req).faceMaxDistance,
+      maxFaceDistance: settings.faceDistanceThreshold,
       liveness,
       shiftStart: employee.shiftStart,
       graceMinutes: employee.graceMinutes,
@@ -403,61 +443,51 @@ export function registerRoutes(app) {
 
   app.post('/api/karyawan/kenali', acceptFiles('frame'), asyncRoute(async (req, res) => {
     if (!guardWrite(req, res)) return;
-    if (!rateLimit(`kenali:${clientIp(req)}`, { limit: 20, windowMs: 10 * 60 * 1000 })) {
+    if (!rateLimit(`kenali:${clientIp(req)}`, { limit: 120, windowMs: 10 * 60 * 1000 })) {
       return sendError(res, 'rate_limited', 429);
     }
+    const settings = repo.getSettings(dbOf(req), configOf(req));
     const catalog = repo.faceCatalog(dbOf(req));
     if (!catalog.length) return sendError(res, 'face_not_enrolled');
     const checked = validateFrames(req.files);
     if (checked.error) return sendError(res, checked.error === 'need_three_faces' ? 'liveness_failed' : checked.error);
-    const read = await readFaces(req.files);
+    const read = await readFaces(req.files, settings.sharpnessMin);
     if (read.error) return sendError(res, read.error === 'need_three_faces' ? 'liveness_failed' : read.error);
     const liveness = assessLiveness(read.frames);
     if (!liveness.ok) return sendError(res, liveness.error || 'liveness_failed');
     const evidenceIndex = evidenceFrameIndex(read.frames, liveness.method);
-    const found = identifyFace(read.frames[evidenceIndex].descriptor, catalog, configOf(req).faceMaxDistance);
+    const found = identifyFace(read.frames[evidenceIndex].descriptor, catalog, settings.faceDistanceThreshold);
     if (!found.ok) return sendError(res, found.error);
     const employee = repo.getEmployee(dbOf(req), found.id);
     if (!employee || !employee.active) return sendError(res, 'inactive', 403);
+    const now = new Date();
+    const cooled = assertCooldown(repo.lastPunchAt(dbOf(req), employee.id), now, settings.detectionCooldownSeconds);
+    if (!cooled.ok) return sendError(res, 'cooldown', 429, { detik: cooled.remaining, nama: employee.name });
     const geofence = matchGeofence(
       { lat: req.body.lat, lng: req.body.lng, accuracy: req.body.accuracy },
       repo.assignedLocations(dbOf(req), employee.id),
       { maxAccuracyMeters: configOf(req).maxGpsAccuracy }
     );
     if (!geofence.ok) return sendError(res, geofence.error, 400, { nama: employee.name, akurasi: geofence.accuracy });
-    const now = new Date();
     const open = repo.openAttendance(dbOf(req), employee.id);
-    const action = open ? 'out' : 'in';
-    const decision = evaluateClock({
-      action,
-      employeeActive: true,
-      faceSampleCount: catalog.find((person) => person.id === employee.id).descriptors.length,
-      openAttendance: open,
-      geofence,
-      faceDistance: found.distance,
-      maxFaceDistance: configOf(req).faceMaxDistance,
-      liveness,
-      shiftStart: employee.shiftStart,
-      graceMinutes: employee.graceMinutes,
-      now
-    });
-    if (!decision.ok) return sendError(res, decision.error, 400, { nama: employee.name });
     const { token, tokenHash } = tokenPair();
+    const expires = new Date(Date.now() + 3 * 60 * 1000).toISOString();
+    repo.createChallenge(dbOf(req), { tokenHash, employeeId: employee.id, expiresAt: expires });
+    const session = tokenPair();
     repo.createSession(dbOf(req), {
-      tokenHash,
+      tokenHash: session.tokenHash,
       kind: 'employee',
       subjectId: employee.id,
       expiresAt: new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString()
     });
-    setSessionCookie(res, configOf(req), 'employee', token);
-    recordPunch(req, res, {
-      employee,
-      action,
-      frames: read.frames,
-      evidenceIndex,
-      faceDistance: found.distance,
-      decision,
-      now
+    setSessionCookie(res, configOf(req), 'employee', session.token);
+    sendOk(res, {
+      nama: employee.name,
+      karyawanId: employee.id,
+      jarak: Math.round(found.distance * 1000) / 1000,
+      sesiTerbuka: Boolean(open),
+      token,
+      kedaluwarsa: expires
     });
   }));
 
@@ -497,9 +527,33 @@ export function registerRoutes(app) {
     sendOk(res, {
       namaPengguna: admin.username,
       perluGantiSandi: verifySecret(DEMO_ADMIN_PASSWORD, admin.password_hash),
-      jarakWajahMaks: config.faceMaxDistance,
+      jarakWajahMaks: repo.getSettings(dbOf(req), config).faceDistanceThreshold,
       akurasiGpsMaks: config.maxGpsAccuracy
     });
+  });
+
+  app.get('/api/kiosk/pengaturan', (req, res) => {
+    const settings = repo.getSettings(dbOf(req), configOf(req));
+    sendOk(res, {
+      frameSkip: settings.frameSkip,
+      confirmationTimeoutSeconds: settings.confirmationTimeoutSeconds,
+      detectionCooldownSeconds: settings.detectionCooldownSeconds,
+      sharpnessMin: settings.sharpnessMin,
+      audioAnnouncements: settings.audioAnnouncements,
+      lateThreshold: settings.lateThreshold
+    });
+  });
+
+  app.get('/api/admin/pengaturan', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    sendOk(res, repo.getSettings(dbOf(req), configOf(req)));
+  });
+
+  app.put('/api/admin/pengaturan', (req, res) => {
+    if (!guardWrite(req, res)) return;
+    if (!requireAdmin(req, res)) return;
+    const settings = repo.saveSettings(dbOf(req), req.body || {}, configOf(req));
+    sendOk(res, { ...settings, pesan: 'Pengaturan disimpan.' });
   });
 
   app.post('/api/admin/sandi', (req, res) => {
@@ -514,7 +568,7 @@ export function registerRoutes(app) {
 
   app.get('/api/admin/hari-ini', (req, res) => {
     if (!requireAdmin(req, res)) return;
-    sendOk(res, repo.todayBoard(dbOf(req)));
+    sendOk(res, repo.todayBoard(dbOf(req), new Date(), configOf(req)));
   });
 
   app.get('/api/admin/karyawan', (req, res) => {
@@ -551,29 +605,34 @@ export function registerRoutes(app) {
     sendOk(res, { sampel: samples });
   });
 
-  app.post('/api/admin/karyawan/:id/wajah', acceptFiles('foto'), asyncRoute(async (req, res) => {
+  app.post('/api/admin/karyawan/:id/wajah', acceptFiles('foto', 40), asyncRoute(async (req, res) => {
     if (!guardWrite(req, res)) return;
     if (!requireAdmin(req, res)) return;
     const employee = repo.getEmployee(dbOf(req), Number(req.params.id));
     if (!employee) return sendError(res, 'not_found', 404);
-    const existing = repo.faceSamples(dbOf(req), employee.id);
-    if (existing.length + 3 > 6) return sendError(res, 'too_many_faces');
-    const read = await readFaces(req.files);
+    const settings = repo.getSettings(dbOf(req), configOf(req));
+    const read = await readEnrollment(req.files, asList(req.body?.pose), settings.sharpnessMin);
     if (read.error) return sendError(res, read.error);
-    const enrollment = assessEnrollment(read.frames);
+    const enrollment = assessEnrollment(read.frames, { maxFrames: settings.maxEnrollmentFrames });
     if (!enrollment.ok) return sendError(res, enrollment.error);
     const config = configOf(req);
     const paths = read.frames.map((frame) => saveJpeg(config, frame.buffer));
     try {
-      repo.addFaceSamples(dbOf(req), employee.id, read.frames.map((frame, index) => ({
+      const replaced = repo.replaceFaceSamples(dbOf(req), employee.id, read.frames.map((frame, index) => ({
         descriptor: frame.descriptor,
-        imagePath: paths[index]
+        imagePath: paths[index],
+        pose: frame.pose,
+        score: frame.score,
+        sharpness: frame.sharpness,
+        yaw: frame.yaw,
+        pitch: frame.pitch
       })));
+      for (const relative of replaced.oldPaths) removeUpload(config, relative);
     } catch (error) {
       for (const relative of paths) removeUpload(config, relative);
       throw error;
     }
-    sendOk(res, { pesan: 'Wajah karyawan tersimpan.', karyawan: repo.getEmployee(dbOf(req), employee.id) });
+    sendOk(res, { pesan: 'Wajah karyawan tersimpan. Contoh wajah diperbarui.', karyawan: repo.getEmployee(dbOf(req), employee.id) });
   }));
 
   app.delete('/api/admin/karyawan/:id/wajah/:sampleId', (req, res) => {
@@ -629,6 +688,30 @@ export function registerRoutes(app) {
     if (repo.locationUsage(dbOf(req), id) > 0) return sendError(res, 'location_in_use');
     repo.deleteLocation(dbOf(req), id);
     sendOk(res, { pesan: 'Lokasi dihapus.' });
+  });
+
+  app.post('/api/admin/absensi/:id/tutup', (req, res) => {
+    if (!guardWrite(req, res)) return;
+    if (!requireAdmin(req, res)) return;
+    const existing = repo.getAttendance(dbOf(req), Number(req.params.id));
+    if (!existing) return sendError(res, 'not_found', 404);
+    const mentah = String(req.body?.clockOutAt || '');
+    const cocok = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(mentah);
+    const clockOutAt = cocok ? wibDateTime(cocok[1], cocok[2]) : (mentah ? new Date(mentah).toISOString() : new Date().toISOString());
+    const saved = repo.correctSession(dbOf(req), existing.id, clockOutAt);
+    if (saved.error) return sendError(res, saved.error, saved.error === 'not_found' ? 404 : 400);
+    sendOk(res, { absensi: saved.attendance, pesan: 'Sesi ditutup.' });
+  });
+
+  app.post('/api/admin/impor', acceptFiles('berkas', 1), (req, res) => {
+    if (!guardWrite(req, res)) return;
+    if (!requireAdmin(req, res)) return;
+    const file = req.files?.[0];
+    if (!file) return sendError(res, 'import_failed');
+    const table = parseAttendanceTable(file.buffer);
+    if (!table.length) return sendError(res, 'import_empty');
+    const hasil = repo.importSessions(dbOf(req), table.map((row) => normalizeImportRow(row)));
+    sendOk(res, { ...hasil, pesan: `${hasil.masuk} baris absensi diimpor.` });
   });
 
   app.get('/api/admin/absensi', (req, res) => {
@@ -748,7 +831,7 @@ function sendExport(req, res, kind) {
     locationId: numberOrNull(req.query.lokasiId),
     limit: 10000
   });
-  const rows = exportRows(records);
+  const rows = exportRows(records, repo.listEmployees(dbOf(req)), repo.getSettings(dbOf(req), configOf(req)));
   const filename = `absensi-${range.dari}-${range.sampai}`;
   if (kind === 'xls') {
     res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');

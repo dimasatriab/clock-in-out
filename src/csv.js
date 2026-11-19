@@ -58,5 +58,7 @@ export const EXPORT_HEADERS = [
   'Akurasi pulang (m)',
   'Lintang pulang',
   'Bujur pulang',
-  'Skor wajah pulang'
+  'Skor wajah pulang',
+  'Pulang otomatis',
+  'Status datang'
 ];

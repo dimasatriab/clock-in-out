@@ -1,7 +1,9 @@
 import { BUSINESSES, DEMO_EMPLOYEES, DEMO_LOCATIONS } from './demo-data.js';
 import { hashSecret } from './password.js';
+import { normalizePhone } from './phone.js';
 import { transaction } from './db.js';
-import { jakartaDateLabel, jakartaDayRange, rangeFromLabels, workedHours } from './time.js';
+import { settingsFromRows, serializeSettings } from './settings.js';
+import { arrivalFlag, jakartaDateLabel, jakartaDayRange, rangeFromLabels, staleClockOutIso, sumCompletedHours, workedHours } from './time.js';
 
 export function seedIfEmpty(db, config) {
   const insertBusiness = db.prepare('INSERT OR IGNORE INTO businesses (id, name) VALUES (?, ?)');
@@ -201,7 +203,13 @@ export function deleteLocation(db, id) {
   });
 }
 
+const catalogCache = new WeakMap();
+
 export function faceCatalog(db) {
+  const stamp = db.prepare('SELECT COUNT(*) AS n, COALESCE(MAX(id), 0) AS m FROM face_samples').get();
+  const key = `${stamp.n}:${stamp.m}`;
+  const cached = catalogCache.get(db);
+  if (cached?.key === key) return cached.catalog;
   const rows = db.prepare(`
     SELECT e.id AS employee_id, f.descriptor
     FROM employees e
@@ -214,25 +222,67 @@ export function faceCatalog(db) {
     if (!grouped.has(row.employee_id)) grouped.set(row.employee_id, []);
     grouped.get(row.employee_id).push(JSON.parse(row.descriptor));
   }
-  return [...grouped.entries()]
+  const catalog = [...grouped.entries()]
     .filter(([, descriptors]) => descriptors.length >= 2)
     .map(([id, descriptors]) => ({ id, descriptors }));
+  catalogCache.set(db, { key, catalog });
+  return catalog;
 }
 
 export function faceSamples(db, employeeId) {
-  return db.prepare('SELECT id, employee_id, descriptor, image_path, created_at FROM face_samples WHERE employee_id = ? ORDER BY id').all(employeeId).map((row) => ({
+  return db.prepare('SELECT * FROM face_samples WHERE employee_id = ? ORDER BY id').all(employeeId).map((row) => ({
     id: row.id,
     employeeId: row.employee_id,
     descriptor: JSON.parse(row.descriptor),
     imagePath: row.image_path,
+    pose: row.pose || '',
+    qualityScore: row.quality_score,
+    sharpness: row.sharpness,
+    yaw: row.yaw,
+    pitch: row.pitch,
     createdAt: row.created_at
   }));
 }
 
 export function addFaceSamples(db, employeeId, samples) {
   const now = new Date().toISOString();
-  const insert = db.prepare('INSERT INTO face_samples (employee_id, descriptor, image_path, created_at) VALUES (?, ?, ?, ?)');
-  return transaction(db, () => samples.map((sample) => Number(insert.run(employeeId, JSON.stringify(sample.descriptor), sample.imagePath, now).lastInsertRowid)));
+  const insert = db.prepare(`INSERT INTO face_samples (
+    employee_id, descriptor, image_path, pose, quality_score, sharpness, yaw, pitch, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  return transaction(db, () => samples.map((sample) => Number(insert.run(
+    employeeId,
+    JSON.stringify(sample.descriptor),
+    sample.imagePath,
+    sample.pose || null,
+    sample.qualityScore ?? sample.score ?? null,
+    sample.sharpness ?? null,
+    sample.yaw ?? null,
+    sample.pitch ?? null,
+    now
+  ).lastInsertRowid)));
+}
+
+export function replaceFaceSamples(db, employeeId, samples) {
+  return transaction(db, () => {
+    const old = db.prepare('SELECT image_path FROM face_samples WHERE employee_id = ?').all(employeeId).map((row) => row.image_path);
+    db.prepare('DELETE FROM face_samples WHERE employee_id = ?').run(employeeId);
+    const now = new Date().toISOString();
+    const insert = db.prepare(`INSERT INTO face_samples (
+      employee_id, descriptor, image_path, pose, quality_score, sharpness, yaw, pitch, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ids = samples.map((sample) => Number(insert.run(
+      employeeId,
+      JSON.stringify(sample.descriptor),
+      sample.imagePath,
+      sample.pose || null,
+      sample.qualityScore ?? sample.score ?? null,
+      sample.sharpness ?? null,
+      sample.yaw ?? null,
+      sample.pitch ?? null,
+      now
+    ).lastInsertRowid));
+    return { ids, oldPaths: old };
+  });
 }
 
 export function deleteFaceSample(db, employeeId, sampleId) {
@@ -290,7 +340,8 @@ export function completeClockOut(db, attendanceId, row) {
     db.prepare(`
       UPDATE attendance SET
         clock_out_at = ?, out_location_id = ?, out_lat = ?, out_lng = ?, out_accuracy = ?,
-        out_distance_meters = ?, out_photo = ?, out_frames = ?, out_face_distance = ?, out_liveness = ?
+        out_distance_meters = ?, out_photo = ?, out_frames = ?, out_face_distance = ?, out_liveness = ?,
+        out_auto = 0
       WHERE id = ?
     `).run(
       row.clockOutAt,
@@ -342,6 +393,7 @@ function mapAttendance(db, row) {
     outLiveness: row.out_liveness,
     outFrames: JSON.parse(row.out_frames || '[]'),
     lateMinutes: row.late_minutes,
+    outAuto: row.out_auto === 1,
     hoursWorked: workedHours(row.clock_in_at, row.clock_out_at)
   };
 }
@@ -373,31 +425,191 @@ export function employeeHistory(db, employeeId, limit = 30) {
   return rows.map((row) => mapAttendance(db, row));
 }
 
-export function todayBoard(db, now = new Date()) {
+export function getSettings(db, config = {}) {
+  const rows = db.prepare('SELECT key, value FROM app_settings').all();
+  return settingsFromRows(rows, config);
+}
+
+export function saveSettings(db, input, config = {}) {
+  const settings = settingsFromRows(
+    Object.entries(serializeSettings(settingsFromRows(
+      Object.entries(input || {}).map(([key, value]) => ({ key, value })),
+      config
+    ))).map(([key, value]) => ({ key, value })),
+    config
+  );
+  const stored = serializeSettings(settings);
+  const upsert = db.prepare(`INSERT INTO app_settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
+  transaction(db, () => {
+    for (const [key, value] of Object.entries(stored)) upsert.run(key, value);
+  });
+  return settings;
+}
+
+export function lastPunchAt(db, employeeId) {
+  const row = db.prepare(`
+    SELECT MAX(ts) AS ts FROM (
+      SELECT clock_in_at AS ts FROM attendance WHERE employee_id = ?
+      UNION ALL
+      SELECT clock_out_at AS ts FROM attendance WHERE employee_id = ? AND clock_out_at IS NOT NULL
+    )
+  `).get(employeeId, employeeId);
+  return row?.ts || null;
+}
+
+export function closeStaleSessions(db, now, autoTime) {
+  const today = jakartaDateLabel(now);
+  const open = db.prepare('SELECT id, clock_in_at, location_id FROM attendance WHERE clock_out_at IS NULL').all();
+  const update = db.prepare(`UPDATE attendance
+    SET clock_out_at = ?, out_location_id = ?, out_liveness = 'auto', out_auto = 1
+    WHERE id = ? AND clock_out_at IS NULL`);
+  return transaction(db, () => {
+    let closed = 0;
+    for (const row of open) {
+      if (jakartaDateLabel(new Date(row.clock_in_at)) >= today) continue;
+      const clockOutAt = staleClockOutIso(row.clock_in_at, autoTime);
+      if (!clockOutAt) continue;
+      const result = update.run(clockOutAt, row.location_id, row.id);
+      closed += result.changes || 0;
+    }
+    return closed;
+  });
+}
+
+export function sweepAutoClockOut(db, config, now = new Date()) {
+  return closeStaleSessions(db, now, getSettings(db, config).autoClockOutTime);
+}
+
+export function correctSession(db, id, clockOutAt) {
+  const row = db.prepare('SELECT * FROM attendance WHERE id = ?').get(id);
+  if (!row) return { error: 'not_found' };
+  const outAt = new Date(clockOutAt);
+  if (!Number.isFinite(outAt.getTime()) || outAt.getTime() <= new Date(row.clock_in_at).getTime()) return { error: 'bad_request' };
+  db.prepare(`UPDATE attendance
+    SET clock_out_at = ?, out_location_id = COALESCE(out_location_id, location_id),
+        out_liveness = 'koreksi', out_auto = 0
+    WHERE id = ?`).run(outAt.toISOString(), id);
+  return { attendance: getAttendance(db, id) };
+}
+
+export function weeklyHeadcount(db, now = new Date()) {
+  const today = jakartaDateLabel(now);
+  const start = new Date(rangeFromLabels(today, today).start.getTime() - 6 * 24 * 60 * 60 * 1000);
+  const days = [];
+  for (let i = 0; i < 7; i += 1) {
+    const label = jakartaDateLabel(new Date(start.getTime() + i * 24 * 60 * 60 * 1000));
+    days.push(label);
+  }
+  return days.map((label) => {
+    const range = rangeFromLabels(label, label);
+    const row = db.prepare(`SELECT COUNT(DISTINCT employee_id) AS n FROM attendance
+      WHERE clock_in_at >= ? AND clock_in_at < ?`).get(range.start.toISOString(), range.end.toISOString());
+    return { tanggal: label, jumlah: row.n };
+  });
+}
+
+export function importSessions(db, rows) {
+  const employees = listEmployees(db);
+  const byPhone = new Map(employees.map((employee) => [employee.phone, employee]));
+  const byName = new Map(employees.map((employee) => [employee.name.trim().toLowerCase(), employee]));
+  const insert = db.prepare(`INSERT INTO attendance (
+    employee_id, location_id, clock_in_at, clock_out_at, in_lat, in_lng, in_accuracy, in_distance_meters,
+    in_photo, in_frames, in_face_distance, in_liveness, out_lat, out_lng, out_accuracy, out_distance_meters,
+    out_photo, out_frames, out_face_distance, out_liveness, out_location_id, late_minutes, out_auto, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, '', '[]', 0, 'impor', ?, ?, ?, ?, '', '[]', ?, ?, ?, ?, 0, ?)`);
+  const exists = db.prepare('SELECT id FROM attendance WHERE employee_id = ? AND clock_in_at = ?');
+  let masuk = 0;
+  const galat = [];
+  transaction(db, () => {
+    rows.forEach((row, index) => {
+      if (row.error) {
+        galat.push({ baris: index + 2, alasan: row.error });
+        return;
+      }
+      const phone = normalizePhone(row.phone);
+      const employee = (phone && byPhone.get(phone)) || byName.get(String(row.name || '').trim().toLowerCase());
+      if (!employee) {
+        galat.push({ baris: index + 2, alasan: 'karyawan_tidak_dikenal' });
+        return;
+      }
+      if (exists.get(employee.id, row.clockInAt)) {
+        galat.push({ baris: index + 2, alasan: 'sudah_ada' });
+        return;
+      }
+      const locationId = employee.locationIds[0];
+      if (!locationId) {
+        galat.push({ baris: index + 2, alasan: 'tanpa_lokasi' });
+        return;
+      }
+      const location = getLocation(db, locationId);
+      insert.run(
+        employee.id,
+        locationId,
+        row.clockInAt,
+        row.clockOutAt,
+        location?.latitude || 0,
+        location?.longitude || 0,
+        row.clockOutAt ? location?.latitude || 0 : null,
+        row.clockOutAt ? location?.longitude || 0 : null,
+        row.clockOutAt ? 0 : null,
+        row.clockOutAt ? 0 : null,
+        row.clockOutAt ? 0 : null,
+        row.clockOutAt ? 'impor' : null,
+        row.clockOutAt ? locationId : null,
+        null,
+        row.clockInAt
+      );
+      masuk += 1;
+    });
+  });
+  return { masuk, dilewati: galat.length, galat };
+}
+
+export function todayBoard(db, now = new Date(), config = {}) {
+  const settings = getSettings(db, config);
   const { dari } = jakartaDayRange(now);
   const day = rangeFromLabels(dari, dari);
   const employees = listEmployees(db).filter((employee) => employee.active);
   const records = listAttendance(db, { dari, sampai: dari, limit: 2000 });
-  const byEmployee = new Map();
+  const grouped = new Map();
   for (const record of records) {
-    const current = byEmployee.get(record.employeeId);
-    if (!current || record.clockInAt > current.clockInAt) byEmployee.set(record.employeeId, record);
+    if (!grouped.has(record.employeeId)) grouped.set(record.employeeId, []);
+    grouped.get(record.employeeId).push(record);
   }
   const people = employees.map((employee) => {
-    const record = byEmployee.get(employee.id) || null;
+    const sesi = (grouped.get(employee.id) || []).sort((a, b) => a.clockInAt.localeCompare(b.clockInAt));
+    const record = sesi.length ? sesi[sesi.length - 1] : null;
+    const first = sesi[0] || null;
+    const flag = first ? arrivalFlag(first.clockInAt, { lateThreshold: settings.lateThreshold, shiftStart: employee.shiftStart }) : null;
     let status = 'belum';
-    if (record && !record.clockOutAt) status = 'bekerja';
+    if (sesi.some((item) => !item.clockOutAt)) status = 'bekerja';
     else if (record) status = 'pulang';
-    return { employee, record, status, late: (record?.lateMinutes || 0) > 0 };
+    return {
+      employee,
+      record,
+      sesi,
+      jam: sumCompletedHours(sesi),
+      flag,
+      status,
+      late: flag === 'terlambat',
+      early: flag === 'awal',
+      auto: sesi.some((item) => item.outAuto)
+    };
   });
+  const jam = Math.round(people.reduce((sum, person) => sum + person.jam, 0) * 100) / 100;
   return {
     tanggal: dari,
     mulai: day.start.toISOString(),
+    pengaturan: settings,
+    minggu: weeklyHeadcount(db, now),
     ringkasan: {
       total: people.length,
       hadir: people.filter((person) => person.record).length,
       belum: people.filter((person) => !person.record).length,
       terlambat: people.filter((person) => person.late).length,
+      awal: people.filter((person) => person.early).length,
+      jam,
       sedangBekerja: people.filter((person) => person.status === 'bekerja').length,
       sudahPulang: people.filter((person) => person.status === 'pulang').length
     },

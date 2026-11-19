@@ -53,7 +53,10 @@ export function multipart(fields, files) {
   const boundary = '----hadirboundary';
   const chunks = [];
   for (const [key, value] of Object.entries(fields)) {
-    chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`));
+    const list = Array.isArray(value) ? value : [value];
+    for (const item of list) {
+      chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${item}\r\n`));
+    }
   }
   for (const file of files) {
     chunks.push(Buffer.from(

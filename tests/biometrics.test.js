@@ -8,8 +8,8 @@ function descriptor(shift = 0) {
   return values;
 }
 
-function frame(ear, yaw, shift = 0) {
-  return { ear, yaw, descriptor: descriptor(shift) };
+function frame(ear, yaw, shift = 0, pitch = 0, pose = '') {
+  return { ear, yaw, pitch, pose, score: 0.9, descriptor: descriptor(shift) };
 }
 
 test('kedipan dan gelengan diterima, foto diam ditolak', () => {
@@ -26,12 +26,30 @@ test('kedipan dan gelengan diterima, foto diam ditolak', () => {
   assert.equal(assessLiveness([frame(0.33, 0), frame(0.14, 0)]).ok, false);
 });
 
-test('pendaftaran wajah butuh tiga sudut dari orang yang sama', () => {
-  const ok = assessEnrollment([frame(0.3, -0.2), frame(0.31, 0), frame(0.29, 0.16)]);
+test('pendaftaran wajah butuh lima sudut dari orang yang sama', () => {
+  const ok = assessEnrollment([
+    frame(0.3, 0, 0, 0, 'lurus'),
+    frame(0.3, -0.2, 0, 0, 'kiri'),
+    frame(0.3, 0.2, 0, 0, 'kanan'),
+    frame(0.3, 0, 0, -0.12, 'atas'),
+    frame(0.3, 0, 0, 0.12, 'bawah')
+  ]);
   assert.equal(ok.ok, true);
-  assert.equal(assessEnrollment([frame(0.3, 0), frame(0.3, 0.02), frame(0.3, 0.04)]).error, 'need_pose_variety');
-  assert.equal(assessEnrollment([frame(0.3, -0.2), frame(0.3, 0, 3), frame(0.3, 0.2)]).error, 'different_person');
-  assert.equal(assessEnrollment([frame(0.3, 0)]).error, 'need_three_faces');
+  assert.equal(assessEnrollment([frame(0.3, 0, 0, 0, 'lurus')]).error, 'need_pose_set');
+  assert.equal(assessEnrollment([
+    frame(0.3, 0.4, 0, 0, 'lurus'),
+    frame(0.3, -0.2, 0, 0, 'kiri'),
+    frame(0.3, 0.2, 0, 0, 'kanan'),
+    frame(0.3, 0, 0, -0.12, 'atas'),
+    frame(0.3, 0, 0, 0.12, 'bawah')
+  ]).error, 'pose_mismatch');
+  assert.equal(assessEnrollment([
+    frame(0.3, 0, 3, 0, 'lurus'),
+    frame(0.3, -0.2, 0, 0, 'kiri'),
+    frame(0.3, 0.2, 0, 0, 'kanan'),
+    frame(0.3, 0, 0, -0.12, 'atas'),
+    frame(0.3, 0, 0, 0.12, 'bawah')
+  ]).error, 'different_person');
   assert.ok(bestFaceDistance(descriptor(), [descriptor(0.02), descriptor(1)]) < 0.05);
   assert.equal(euclidean([1, 0], [0, 0]), 1);
 });

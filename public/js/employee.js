@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { ensureModels, openCamera, stopStream, waitUntilNoFace, watchLiveness } from './face-capture.js';
+import { ensureModels, openCamera, stopStream, watchLiveness } from './face-capture.js';
 import { durasi, esc, jam, jamPendek, sapaan, tanggalPanjang, tanggalPendek } from './format.js';
 
 const layar = document.querySelector('#layar');
@@ -87,7 +87,7 @@ async function tampilBeranda(pesanAwal) {
       <h1 style="margin:4px 0 8px">${esc(data.karyawan.name)}</h1>
       <p>${terbuka ? `Sudah masuk pukul ${esc(jamPendek(terbuka.clockInAt))} di ${esc(terbuka.locationName)}.` : 'Belum absen masuk hari ini.'}</p>
       <p class="mini">${data.karyawan.shiftStart ? `Jadwal masuk ${esc(data.karyawan.shiftStart)} · toleransi ${esc(data.karyawan.graceMinutes)} menit` : 'Tidak ada jam masuk tetap.'}</p>
-      <p class="mini">Wajah tersimpan: ${esc(data.karyawan.faceSampleCount)} sampel. ${data.karyawan.faceSampleCount < 2 ? 'Minta admin mendaftarkan wajah dulu.' : ''}</p>
+      <p class="mini">Wajah tersimpan: ${esc(data.karyawan.faceSampleCount)} sampel. ${data.karyawan.faceSampleCount < 5 ? 'Minta admin mendaftarkan lima sudut wajah.' : ''}</p>
       <div id="lokasi-status" class="pesan">Mengecek lokasi…</div>
       <button class="tombol" id="absen" type="button" style="margin-top:14px">Kembali ke kamera</button>
       <button class="tombol-kedua" id="segar" type="button" style="margin-top:8px">Perbarui lokasi</button>
@@ -158,16 +158,75 @@ function tunggu(ms, signal) {
   });
 }
 
-async function selesaiPutaran(signal, token) {
-  await tunggu(1800, signal);
-  if (signal.aborted || !masihLayar(token)) return;
-  try {
-    await waitUntilNoFace(video, { signal });
-  } catch (error) {
-    if (signal.aborted || error.name === 'AbortError') return;
-  }
-  if (signal.aborted || !masihLayar(token)) return;
-  setStatus('Ready', 'ready');
+function gambarKotak(box) {
+  const canvas = document.querySelector('#kotak-wajah');
+  if (!canvas) return;
+  const lebar = canvas.clientWidth || 240;
+  const tinggi = canvas.clientHeight || 240;
+  canvas.width = Math.round(lebar * 2);
+  canvas.height = Math.round(tinggi * 2);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!box || !video.videoWidth) return;
+  const scale = Math.max(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
+  const ox = (canvas.width - video.videoWidth * scale) / 2;
+  const oy = (canvas.height - video.videoHeight * scale) / 2;
+  const x = canvas.width - (ox + (box.x + box.width) * scale);
+  const y = oy + box.y * scale;
+  ctx.strokeStyle = '#111';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y, box.width * scale, box.height * scale);
+}
+
+function ucapkan(teks, aktif) {
+  if (!aktif || !window.speechSynthesis) return;
+  const suara = new SpeechSynthesisUtterance(teks);
+  suara.lang = 'id-ID';
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(suara);
+}
+
+function tungguPilihan(nama, detik, signal) {
+  const panel = document.querySelector('#konfirmasi');
+  const hitung = document.querySelector('#konfirmasi-hitung');
+  const masukBtn = document.querySelector('#konfirmasi-masuk');
+  const pulangBtn = document.querySelector('#konfirmasi-pulang');
+  document.querySelector('#konfirmasi-nama').textContent = nama;
+  panel.hidden = false;
+  kamera.classList.add('sedang-konfirmasi');
+  setStatus('Confirming', 'scanning');
+  let sisa = detik;
+  hitung.textContent = `${sisa}s`;
+  return new Promise((resolve) => {
+    const selesai = (nilai) => {
+      clearInterval(timer);
+      masukBtn.removeEventListener('click', pilihMasuk);
+      pulangBtn.removeEventListener('click', pilihPulang);
+      signal?.removeEventListener('abort', batal);
+      panel.hidden = true;
+      kamera.classList.remove('sedang-konfirmasi');
+      resolve(nilai);
+    };
+    const pilihMasuk = () => selesai('in');
+    const pilihPulang = () => selesai('out');
+    const batal = () => selesai('abort');
+    const timer = setInterval(() => {
+      sisa -= 1;
+      hitung.textContent = `${Math.max(sisa, 0)}s`;
+      if (sisa <= 0) selesai('timeout');
+    }, 1000);
+    masukBtn.addEventListener('click', pilihMasuk);
+    pulangBtn.addEventListener('click', pilihPulang);
+    signal?.addEventListener('abort', batal);
+  });
+}
+
+function tampilPita(aksi, nama, waktu) {
+  const pita = document.querySelector('#pita');
+  pita.hidden = false;
+  pita.className = `pita ${aksi === 'out' ? 'pulang' : 'masuk'}`;
+  const kata = aksi === 'out' ? 'Clock Out' : 'Clock In';
+  pita.textContent = `${kata} Confirmed — ${nama} | ${waktu}`;
 }
 
 async function layarDepan() {
@@ -196,11 +255,20 @@ async function layarDepan() {
 }
 
 async function pindai(signal, token) {
+  const pengaturan = await api('/api/kiosk/pengaturan').catch(() => ({
+    frameSkip: 3,
+    confirmationTimeoutSeconds: 10,
+    audioAnnouncements: true
+  }));
   while (!signal.aborted && masihLayar(token)) {
+    gambarKotak(null);
+    setStatus('Ready', 'ready');
     let gerak;
     try {
       gerak = await watchLiveness(video, {
         signal,
+        frameSkip: pengaturan.frameSkip || 3,
+        onBox: gambarKotak,
         onStatus(teks, fase) {
           if (signal.aborted || !masihLayar(token)) return;
           if (fase === 'ready') setStatus('Ready', 'ready');
@@ -214,36 +282,57 @@ async function pindai(signal, token) {
       continue;
     }
     if (signal.aborted || !masihLayar(token)) return;
-    setStatus('Mengecek lokasi…', 'scanning');
+    gambarKotak(null);
+    setStatus('Mencocokkan wajah…', 'scanning');
     let titik;
     try {
       titik = await posisi();
     } catch (error) {
       if (signal.aborted || !masihLayar(token)) return;
       setStatus(error.message, 'error');
-      await selesaiPutaran(signal, token);
+      await tunggu(1800, signal);
       continue;
     }
     if (signal.aborted || !masihLayar(token)) return;
-    setStatus('Mencocokkan wajah…', 'scanning');
     const form = new FormData();
     form.set('lat', String(titik.lat));
     form.set('lng', String(titik.lng));
     form.set('accuracy', String(titik.accuracy));
     gerak.frames.forEach((frame, index) => form.append('frame', frame.blob, `wajah-${index}.jpg`));
-    let fase = 'error';
-    let teks = 'Absen gagal.';
+    let kenali;
     try {
-      const hasil = await api('/api/karyawan/kenali', { method: 'POST', form });
-      fase = 'success';
-      teks = hasil.pesan || 'Absen tercatat.';
+      kenali = await api('/api/karyawan/kenali', { method: 'POST', form });
     } catch (error) {
-      fase = 'error';
-      teks = error.message;
+      if (signal.aborted || !masihLayar(token)) return;
+      setStatus(error.message, 'error');
+      await tunggu(1800, signal);
+      continue;
     }
     if (signal.aborted || !masihLayar(token)) return;
-    setStatus(teks, fase);
-    await selesaiPutaran(signal, token);
+    const pilihan = await tungguPilihan(kenali.nama, pengaturan.confirmationTimeoutSeconds || 10, signal);
+    if (pilihan === 'abort') return;
+    if (pilihan === 'timeout') {
+      setStatus('Ready', 'ready');
+      continue;
+    }
+    form.set('action', pilihan);
+    form.set('token', kenali.token);
+    try {
+      const hasil = await api('/api/karyawan/absen', { method: 'POST', form });
+      const saat = jamPendek(pilihan === 'out' ? hasil.absensi?.clockOutAt : hasil.absensi?.clockInAt);
+      tampilPita(pilihan, kenali.nama, saat);
+      setStatus(pilihan === 'out' ? 'Clock Out' : 'Clock In', 'success');
+      ucapkan(pilihan === 'out' ? `Absen pulang dikonfirmasi, ${kenali.nama}` : `Absen masuk dikonfirmasi, ${kenali.nama}`, pengaturan.audioAnnouncements);
+      await tunggu(2000, signal);
+    } catch (error) {
+      if (signal.aborted || !masihLayar(token)) return;
+      setStatus(error.message, 'error');
+      await tunggu(1800, signal);
+    }
+    const pita = document.querySelector('#pita');
+    if (pita) pita.hidden = true;
+    if (signal.aborted || !masihLayar(token)) return;
+    setStatus('Ready', 'ready');
   }
 }
 

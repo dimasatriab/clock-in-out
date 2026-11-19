@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 import { getConfig } from './config.js';
 import { loadEnv } from './env.js';
 import { faceRuntime, loadFaceModels } from './face.js';
+import { sweepAutoClockOut } from './repo.js';
 import { prepareAssets } from '../scripts/prepare-assets.js';
 
 loadEnv(path.resolve('.env'));
@@ -25,7 +26,18 @@ const server = app.listen(config.port, config.host, () => {
   console.log(`Pemeriksa wajah: ${faceRuntime.ready ? 'siap' : 'belum siap'}`);
 });
 
+const sweepTimer = setInterval(() => {
+  try {
+    const closed = sweepAutoClockOut(app.locals.db, config);
+    if (closed) console.log(`Pulang otomatis: ${closed} sesi.`);
+  } catch (error) {
+    console.error(error);
+  }
+}, 60 * 1000);
+sweepTimer.unref();
+
 function shutdown() {
+  clearInterval(sweepTimer);
   server.close(() => {
     try { app.locals.db.close(); } catch { /* sudah tertutup */ }
     process.exit(0);

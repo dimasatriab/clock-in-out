@@ -20,6 +20,7 @@ const state = {
   lokasi: [],
   absensi: [],
   rekap: [],
+  pengaturan: null,
   filter: { dari: '', sampai: '', karyawanId: '', lokasiId: '' }
 };
 
@@ -62,7 +63,8 @@ function kerangka() {
     ['karyawan', 'Karyawan'],
     ['lokasi', 'Lokasi'],
     ['riwayat', 'Riwayat'],
-    ['rekap', 'Rekap']
+    ['rekap', 'Rekap'],
+    ['pengaturan', 'Atur']
   ];
   aplikasi.innerHTML = `
     <div class="admin">
@@ -98,8 +100,16 @@ function statusChip(orang) {
   return '<span class="chip">Belum hadir</span>';
 }
 
+function kelasBaris(orang) {
+  if (!orang.record) return 'baris-absen';
+  if (orang.flag === 'terlambat') return 'baris-telat';
+  if (orang.flag === 'awal') return 'baris-awal';
+  return 'baris-hadir';
+}
+
 function gambarHari() {
   const ringkas = state.hari.ringkasan;
+  const puncak = Math.max(1, ...(state.hari.minggu || []).map((hari) => hari.jumlah));
   return `
     ${state.saya.perluGantiSandi ? `<div class="peringatan"><strong>Kata sandi masih bawaan percobaan.</strong>
       <form id="ganti" class="baris" style="margin-top:8px">
@@ -110,26 +120,81 @@ function gambarHari() {
     </div>` : ''}
     <h1 style="margin-top:0">Hari ini · ${esc(state.hari.tanggal)}</h1>
     <div class="statistik">
-      ${[['Hadir', ringkas.hadir], ['Belum', ringkas.belum], ['Terlambat', ringkas.terlambat], ['Pulang', ringkas.sudahPulang]].map(([label, nilai]) => `
+      ${[['Hadir', ringkas.hadir], ['Belum', ringkas.belum], ['Terlambat', ringkas.terlambat], ['Awal', ringkas.awal || 0]].map(([label, nilai]) => `
         <article class="kartu" style="margin:0"><div class="mini">${label}</div><div class="angka">${nilai}</div></article>`).join('')}
     </div>
-    <div class="daftar" style="margin-top:16px">
+    <p class="mini">Jam kerja selesai hari ini: ${esc(durasi(ringkas.jam || 0))}. Sesi yang belum ditutup tidak dihitung. <a href="/api/admin/ekspor.csv">Unduh CSV</a></p>
+    <div class="tabel-bungkus">
+      <table class="tabel">
+        <thead><tr><th>Nama</th><th>Masuk</th><th>Pulang</th><th>Jam</th><th>Status</th></tr></thead>
+        <tbody>
+          ${state.hari.karyawan.map((orang) => `
+            <tr class="${kelasBaris(orang)}">
+              <td><strong>${esc(orang.employee.name)}</strong><div class="mini">${esc(orang.employee.businessName)}</div></td>
+              <td>${esc(jamPendek(orang.sesi?.[0]?.clockInAt))}</td>
+              <td>${esc(jamPendek(orang.record?.clockOutAt))}${orang.auto ? '<div class="mini">otomatis</div>' : ''}</td>
+              <td>${esc(durasi(orang.jam || 0))}</td>
+              <td>${statusChip(orang)} ${orang.late ? '<span class="chip warn">Terlambat</span>' : ''} ${orang.early ? '<span class="chip">Awal</span>' : ''}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <h2>Jam per karyawan</h2>
+    <div class="daftar">
       ${state.hari.karyawan.map((orang) => `
         <article class="kartu" style="margin:0">
-          <div class="item" style="border:0;padding:0">
-            <div>
-              <strong>${esc(orang.employee.name)}</strong>
-              <div class="mini">${esc(orang.employee.businessName)} · ${esc(orang.employee.phone)}</div>
-              <div style="margin-top:6px">${statusChip(orang)} ${orang.late ? '<span class="chip warn">Terlambat</span>' : ''}</div>
-            </div>
-            <div>
-              ${orang.record ? `<img class="foto" alt="Swafoto ${esc(orang.employee.name)}" src="/api/foto/absensi/${orang.record.id}/masuk">` : ''}
-              <div class="mini">${orang.record ? `${esc(jamPendek(orang.record.clockInAt))}–${esc(jamPendek(orang.record.clockOutAt))}` : '—'}</div>
-              <div class="mini">${esc(orang.record?.locationName || '')}</div>
-            </div>
-          </div>
-        </article>`).join('') || '<p>Belum ada karyawan aktif.</p>'}
+          <strong>${esc(orang.employee.name)}</strong>
+          <div class="mini">Total selesai ${esc(durasi(orang.jam || 0))}</div>
+          ${(orang.sesi || []).map((sesi) => `<div class="mini">${esc(jamPendek(sesi.clockInAt))}–${esc(jamPendek(sesi.clockOutAt))} · ${esc(durasi(sesi.hoursWorked))}${sesi.outAuto ? ' · pulang otomatis' : ''}</div>`).join('') || '<div class="mini">Belum ada sesi.</div>'}
+          ${orang.record && !orang.record.clockOutAt ? `<form data-tutup="${orang.record.id}" class="baris" style="margin-top:8px">
+            <input type="datetime-local" name="clockOutAt">
+            <button class="tombol" type="submit">Tutup sesi</button>
+          </form>` : ''}
+        </article>`).join('')}
+    </div>
+    <h2>Kehadiran 7 hari</h2>
+    <div class="minggu">
+      ${(state.hari.minggu || []).map((hari) => `
+        <div class="kolom">
+          <strong>${hari.jumlah}</strong>
+          <div class="batang" style="height:${Math.max(8, Math.round((hari.jumlah / puncak) * 100))}px"></div>
+          <span>${esc(hari.tanggal.slice(5))}</span>
+        </div>`).join('')}
     </div>`;
+}
+
+function gambarPengaturan() {
+  const atur = state.pengaturan || {};
+  return `
+    <h1 style="margin-top:0">Pengaturan</h1>
+    <form id="pengaturan" class="kartu">
+      <label>Ambang jarak wajah (lebih kecil lebih ketat)</label>
+      <input name="faceDistanceThreshold" type="number" min="0.2" max="0.8" step="0.01" value="${esc(atur.faceDistanceThreshold ?? 0.5)}" required>
+      <label>Lewati frame (frame skip)</label>
+      <input name="frameSkip" type="number" min="1" max="10" value="${esc(atur.frameSkip ?? 3)}" required>
+      <label>Batas konfirmasi (detik)</label>
+      <input name="confirmationTimeoutSeconds" type="number" min="3" max="60" value="${esc(atur.confirmationTimeoutSeconds ?? 10)}" required>
+      <label>Jeda antar absen (detik)</label>
+      <input name="detectionCooldownSeconds" type="number" min="0" max="300" value="${esc(atur.detectionCooldownSeconds ?? 30)}" required>
+      <label>Ketajaman minimum</label>
+      <input name="sharpnessMin" type="number" min="0" max="500" value="${esc(atur.sharpnessMin ?? 50)}" required>
+      <label>Jam pulang otomatis</label>
+      <input name="autoClockOutTime" type="time" value="${esc(atur.autoClockOutTime || '20:00')}" required>
+      <label>Batas terlambat</label>
+      <input name="lateThreshold" type="time" step="1" value="${esc((atur.lateThreshold || '09:30:00').slice(0, 8))}" required>
+      <label>Maksimum foto pendaftaran</label>
+      <input name="maxEnrollmentFrames" type="number" min="5" max="40" value="${esc(atur.maxEnrollmentFrames ?? 12)}" required>
+      <label class="cek"><input name="audioAnnouncements" type="checkbox" ${atur.audioAnnouncements === false ? '' : 'checked'}> Pengumuman suara</label>
+      <button class="tombol" style="margin-top:12px" type="submit">Simpan pengaturan</button>
+      <p id="atur-pesan" class="mini"></p>
+    </form>
+    <form id="impor" class="kartu">
+      <h2 style="margin-top:0;font-size:18px">Impor absensi lama</h2>
+      <p class="mini">CSV atau Excel dengan kolom nama, telepon, tanggal, masuk, pulang.</p>
+      <input name="berkas" type="file" accept=".csv,.xls,.xlsx,text/csv" required>
+      <button class="tombol" style="margin-top:12px" type="submit">Impor</button>
+      <p id="impor-pesan" class="mini"></p>
+    </form>`;
 }
 
 function gambarKaryawan() {
@@ -294,6 +359,7 @@ async function muatBagian() {
     state.filter.dari = data.dari;
     state.filter.sampai = data.sampai;
   }
+  if (state.bagian === 'pengaturan') state.pengaturan = await api('/api/admin/pengaturan');
 }
 
 async function gambar() {
@@ -306,6 +372,7 @@ async function gambar() {
   if (state.bagian === 'lokasi') isi.innerHTML = gambarLokasi();
   if (state.bagian === 'riwayat') isi.innerHTML = gambarRiwayat();
   if (state.bagian === 'rekap') isi.innerHTML = gambarRekap();
+  if (state.bagian === 'pengaturan') isi.innerHTML = gambarPengaturan();
   pasangAksi(isi);
   if (state.bagian === 'hari') {
     timer = setInterval(async () => {
@@ -315,7 +382,7 @@ async function gambar() {
         kotak.innerHTML = gambarHari();
         pasangAksi(kotak);
       }
-    }, 20000);
+    }, 10000);
   }
   if (state.bagian === 'lokasi') siapkanPeta();
 }
@@ -410,6 +477,51 @@ function pasangAksi(isi) {
       }
     });
   });
+  isi.querySelectorAll('form[data-tutup]').forEach((form) => {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const clockOutAt = new FormData(form).get('clockOutAt');
+      try {
+        await api(`/api/admin/absensi/${form.dataset.tutup}/tutup`, { method: 'POST', body: { clockOutAt } });
+        await gambar();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+  });
+  isi.querySelector('#pengaturan')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const late = String(data.get('lateThreshold') || '09:30:00');
+    const body = {
+      faceDistanceThreshold: Number(data.get('faceDistanceThreshold')),
+      frameSkip: Number(data.get('frameSkip')),
+      confirmationTimeoutSeconds: Number(data.get('confirmationTimeoutSeconds')),
+      detectionCooldownSeconds: Number(data.get('detectionCooldownSeconds')),
+      sharpnessMin: Number(data.get('sharpnessMin')),
+      autoClockOutTime: data.get('autoClockOutTime'),
+      lateThreshold: late.length === 5 ? `${late}:00` : late,
+      maxEnrollmentFrames: Number(data.get('maxEnrollmentFrames')),
+      audioAnnouncements: data.get('audioAnnouncements') === 'on'
+    };
+    try {
+      const hasil = await api('/api/admin/pengaturan', { method: 'PUT', body });
+      state.pengaturan = hasil;
+      isi.querySelector('#atur-pesan').textContent = hasil.pesan;
+    } catch (error) {
+      isi.querySelector('#atur-pesan').textContent = error.message;
+    }
+  });
+  isi.querySelector('#impor')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      const hasil = await api('/api/admin/impor', { method: 'POST', form });
+      isi.querySelector('#impor-pesan').textContent = hasil.pesan;
+    } catch (error) {
+      isi.querySelector('#impor-pesan').textContent = error.message;
+    }
+  });
   isi.querySelector('#filter')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -454,45 +566,66 @@ function gambarLingkaran() {
   peta.setView([lat, lng], 16);
 }
 
+const POSE_DAFTAR = [
+  ['lurus', 'Hadap lurus ke kamera.'],
+  ['kiri', 'Menoleh ke kiri.'],
+  ['kanan', 'Menoleh ke kanan.'],
+  ['atas', 'Angkat dagu, lihat sedikit ke atas.'],
+  ['bawah', 'Tundukkan dagu sedikit.']
+];
+
+function poseCukup(nama, pose) {
+  const yaw = pose.yaw;
+  const pitch = pose.pitch;
+  if ((pose.score ?? 1) < 0.45) return 'Wajah kurang jelas.';
+  if ((pose.sharpness ?? 999) < 50) return 'Foto terlalu datar. Jangan memakai cetakan.';
+  if ((pose.box?.width ?? 200) < 80) return 'Dekatkan wajah.';
+  if (nama === 'lurus' && (Math.abs(yaw) > 0.22 || Math.abs(pitch) > 0.2)) return 'Hadap lebih lurus.';
+  if (nama === 'kiri' && yaw > -0.1) return 'Menoleh lebih ke kiri.';
+  if (nama === 'kanan' && yaw < 0.1) return 'Menoleh lebih ke kanan.';
+  if (nama === 'atas' && pitch > -0.06) return 'Angkat dagu sedikit lagi.';
+  if (nama === 'bawah' && pitch < 0.06) return 'Tundukkan dagu sedikit lagi.';
+  return '';
+}
+
 async function daftarWajah(id) {
   const orang = state.karyawan.find((item) => item.id === id);
   const shots = [];
-  const petunjuk = [
-    'Foto 1 dari 3. Hadap lurus, lalu ambil.',
-    'Foto 2 dari 3. Putar wajah sedikit ke kiri, lalu ambil.',
-    'Foto 3 dari 3. Putar wajah sedikit ke kanan, lalu ambil.'
-  ];
   kamera.hidden = false;
   try {
     statusKamera.textContent = 'Menyiapkan kamera…';
     await ensureModels((text) => { statusKamera.textContent = text; });
     stream = await openCamera(video);
-    for (let i = 0; i < 3; i += 1) {
-      statusKamera.textContent = petunjuk[i];
+    for (let i = 0; i < POSE_DAFTAR.length; i += 1) {
+      const [nama, petunjuk] = POSE_DAFTAR[i];
+      statusKamera.textContent = `${i + 1}/${POSE_DAFTAR.length}. ${petunjuk}`;
       const shot = await new Promise((resolve, reject) => {
         const ambil = document.querySelector('#kamera-ambil');
         const onAmbil = async () => {
-          ambil.removeEventListener('click', onAmbil);
           const pose = await capturePose(video);
           if (!pose) {
-            statusKamera.textContent = `${petunjuk[i]} Wajah belum terlihat.`;
-            ambil.addEventListener('click', onAmbil);
+            statusKamera.textContent = `${i + 1}/${POSE_DAFTAR.length}. ${petunjuk} Wajah belum terlihat.`;
             return;
           }
-          resolve(pose);
+          const alasan = poseCukup(nama, pose);
+          if (alasan) {
+            statusKamera.textContent = `${i + 1}/${POSE_DAFTAR.length}. ${alasan}`;
+            return;
+          }
+          ambil.removeEventListener('click', onAmbil);
+          resolve({ ...pose, pose: nama });
         };
         ambil.addEventListener('click', onAmbil);
         document.querySelector('#kamera-batal').addEventListener('click', () => reject(new Error('Dibatalkan')), { once: true });
       });
       shots.push(shot);
     }
-    const yaws = shots.map((shot) => shot.yaw);
-    if (Math.max(...yaws) - Math.min(...yaws) < 0.12) {
-      throw new Error('Sudut wajah masih terlalu mirip. Ulangi dengan putaran yang lebih jelas.');
-    }
     statusKamera.textContent = 'Menyimpan wajah…';
     const form = new FormData();
-    shots.forEach((shot, index) => form.append('foto', shot.blob, `daftar-${index}.jpg`));
+    shots.forEach((shot, index) => {
+      form.append('pose', shot.pose);
+      form.append('foto', shot.blob, `daftar-${index}.jpg`);
+    });
     const hasil = await api(`/api/admin/karyawan/${id}/wajah`, { method: 'POST', form });
     tutupKamera();
     alert(hasil.pesan);

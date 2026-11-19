@@ -86,12 +86,31 @@ export function evidenceFrameIndex(frames, method) {
   return index;
 }
 
-export function assessEnrollment(frames) {
-  if (!Array.isArray(frames) || frames.length !== 3 || frames.some((frame) => !validFrame(frame))) {
-    return { ok: false, error: 'need_three_faces' };
+export const ENROLL_POSES = ['lurus', 'kiri', 'kanan', 'atas', 'bawah'];
+
+export function poseMatches(frame) {
+  const yaw = Number(frame?.yaw);
+  const pitch = Number(frame?.pitch);
+  if (!Number.isFinite(yaw) || !Number.isFinite(pitch)) return false;
+  if (frame.pose === 'lurus') return Math.abs(yaw) <= 0.22 && Math.abs(pitch) <= 0.2;
+  if (frame.pose === 'kiri') return yaw <= -0.1;
+  if (frame.pose === 'kanan') return yaw >= 0.1;
+  if (frame.pose === 'atas') return pitch <= -0.06;
+  if (frame.pose === 'bawah') return pitch >= 0.06;
+  return false;
+}
+
+export function assessEnrollment(frames, { maxFrames = 40 } = {}) {
+  if (!Array.isArray(frames) || frames.length < ENROLL_POSES.length || frames.some((frame) => !validFrame(frame))) {
+    return { ok: false, error: 'need_pose_set' };
   }
+  if (frames.length > maxFrames) return { ok: false, error: 'too_many_faces' };
+  if (frames.some((frame) => Number.isFinite(frame.score) && frame.score < 0.45)) {
+    return { ok: false, error: 'face_quality' };
+  }
+  const poses = new Set(frames.map((frame) => frame.pose));
+  if (ENROLL_POSES.some((pose) => !poses.has(pose))) return { ok: false, error: 'need_pose_set' };
+  if (frames.some((frame) => !poseMatches(frame))) return { ok: false, error: 'pose_mismatch' };
   if (!samePerson(frames, 0.6)) return { ok: false, error: 'different_person' };
-  const yaws = frames.map((frame) => frame.yaw);
-  if (Math.max(...yaws) - Math.min(...yaws) < 0.1) return { ok: false, error: 'need_pose_variety' };
   return { ok: true };
 }

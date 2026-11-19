@@ -15,6 +15,11 @@ export const PESAN = {
   multiple_faces: 'Pastikan hanya satu wajah yang terlihat di kamera.',
   face_too_small: 'Dekatkan wajah ke kamera.',
   need_three_faces: 'Diperlukan 3 swafoto dari kamera.',
+  need_pose_set: 'Daftarkan lima sudut: lurus, kiri, kanan, atas, dan bawah.',
+  pose_mismatch: 'Salah satu foto tidak sesuai sudut yang diminta.',
+  face_quality: 'Foto terlalu buram atau wajahnya kurang jelas. Ulangi di tempat terang.',
+  photo_flat: 'Foto terlalu datar, seperti cetakan atau layar. Gunakan wajah asli.',
+  cooldown: 'Absen yang sama terlalu dekat. Tunggu sebentar sebelum mencoba lagi.',
   need_pose_variety: 'Ambil swafoto dari sudut yang sedikit berbeda.',
   different_person: 'Swafoto tampak berasal dari orang yang berbeda.',
   bad_image: 'Foto tidak bisa dibaca. Ulangi pengambilan dari kamera.',
@@ -34,5 +39,7 @@ export const PESAN = {
   password_weak: 'Kata sandi admin minimal 8 karakter dan jangan memakai kata sandi percobaan.',
   pin_invalid: 'PIN harus 4 sampai 6 angka.',
   server_error: 'Terjadi gangguan. Coba lagi.',
-  too_many_faces: 'Sampel wajah sudah 6. Hapus yang lama sebelum menambah lagi.'
+  too_many_faces: 'Jumlah foto melebihi batas pendaftaran di pengaturan.',
+  import_empty: 'Berkas impor tidak berisi baris absensi yang bisa dibaca.',
+  import_failed: 'Impor gagal. Gunakan CSV atau Excel dengan kolom nama, tanggal, masuk, dan pulang.'
 };

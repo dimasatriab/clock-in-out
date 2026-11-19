@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { getConfig } from './config.js';
 import { openDatabase } from './db.js';
-import { seedIfEmpty } from './repo.js';
+import { seedIfEmpty, sweepAutoClockOut } from './repo.js';
 import { registerRoutes } from './routes.js';
 import { sendError } from './http.js';
 
@@ -10,6 +10,7 @@ export async function createApp() {
   const config = getConfig();
   const db = openDatabase(config);
   seedIfEmpty(db, config);
+  sweepAutoClockOut(db, config);
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy ? 1 : false);
