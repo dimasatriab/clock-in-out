@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS businesses (
 
 CREATE TABLE IF NOT EXISTS admins (
   id INTEGER PRIMARY KEY,
-  username TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  phone TEXT NOT NULL UNIQUE,
+  pin_hash TEXT NOT NULL,
   must_change_password INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );

@@ -11,10 +11,10 @@ export function seedIfEmpty(db, config) {
 
   const adminCount = db.prepare('SELECT COUNT(*) AS n FROM admins').get().n;
   const now = new Date().toISOString();
-  if (adminCount === 0 && config.adminPassword) {
-    db.prepare('INSERT INTO admins (username, password_hash, must_change_password, created_at) VALUES (?, ?, 1, ?)').run(
-      config.adminUser,
-      hashSecret(config.adminPassword),
+  if (adminCount === 0 && config.adminPhone && config.adminPin) {
+    db.prepare('INSERT INTO admins (phone, pin_hash, must_change_password, created_at) VALUES (?, ?, 0, ?)').run(
+      config.adminPhone,
+      hashSecret(config.adminPin),
       now
     );
   }
@@ -92,16 +92,16 @@ function mapEmployee(row, locationIds = []) {
   };
 }
 
-export function getAdminByUsername(db, username) {
-  return db.prepare('SELECT * FROM admins WHERE username = ?').get(username);
+export function getAdminByPhone(db, phone) {
+  return db.prepare('SELECT * FROM admins WHERE phone = ?').get(phone);
 }
 
 export function getAdmin(db, id) {
   return db.prepare('SELECT * FROM admins WHERE id = ?').get(id);
 }
 
-export function updateAdminPassword(db, id, passwordHash) {
-  db.prepare('UPDATE admins SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(passwordHash, id);
+export function updateAdminPin(db, id, pinHash) {
+  db.prepare('UPDATE admins SET pin_hash = ?, must_change_password = 0 WHERE id = ?').run(pinHash, id);
 }
 
 export function getEmployeeByPhone(db, phone) {

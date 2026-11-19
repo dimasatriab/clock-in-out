@@ -24,8 +24,8 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
   process.env.COOKIE_SECURE = '0';
   process.env.DEMO = '1';
   process.env.DEMO_PIN = '908172';
-  process.env.ADMIN_USER = 'admin';
-  process.env.ADMIN_PASSWORD = 'test-admin-pass';
+  process.env.ADMIN_PHONE = '081299000001';
+  process.env.ADMIN_PIN = '9081';
   process.env.FACE_MATCH_MAX_DISTANCE = '0.5';
   process.env.MAX_GPS_ACCURACY_METERS = '100';
 
@@ -50,25 +50,18 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
     const badAdmin = await request(server, {
       method: 'POST',
       path: '/api/admin/masuk',
-      json: { username: 'admin', password: 'salah-sekali' }
+      json: { phone: '081299000001', pin: '1111' }
     });
     assert.equal(badAdmin.status, 401);
 
     const adminLogin = await request(server, {
       method: 'POST',
       path: '/api/admin/masuk',
-      json: { username: 'admin', password: 'test-admin-pass' }
+      json: { phone: '6281299000001', pin: '9081' }
     });
     assert.equal(adminLogin.status, 200);
-    assert.equal(adminLogin.data.perluGantiSandi, true);
+    assert.equal(adminLogin.data.perluGantiSandi, false);
     const adminCookie = cookiePair(adminLogin.setCookie, 'hadir_admin');
-    const ganti = await request(server, {
-      method: 'POST',
-      path: '/api/admin/sandi',
-      cookie: adminCookie,
-      json: { password: 'ganti-admin-9' }
-    });
-    assert.equal(ganti.status, 200, JSON.stringify(ganti.data));
     const pengaturan = await request(server, {
       method: 'PUT',
       path: '/api/admin/pengaturan',

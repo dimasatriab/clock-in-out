@@ -33,10 +33,10 @@ function masuk() {
         <h1 style="margin-top:0">Dasbor admin</h1>
         <p class="redup">Kelola karyawan, lokasi kerja, dan rekap absensi.</p>
         <form id="masuk">
-          <label for="pengguna">Nama pengguna</label>
-          <input id="pengguna" name="username" autocomplete="username" required>
-          <label for="sandi">Kata sandi</label>
-          <input id="sandi" name="password" type="password" autocomplete="current-password" required>
+          <label for="telepon-admin">Nomor HP</label>
+          <input id="telepon-admin" name="phone" inputmode="tel" autocomplete="username" placeholder="08xxxxxxxxxx" required>
+          <label for="pin-admin">PIN</label>
+          <input id="pin-admin" name="pin" type="password" inputmode="numeric" minlength="4" maxlength="6" autocomplete="current-password" placeholder="4–6 angka" required>
           <p id="galat" class="pesan buruk" hidden></p>
           <button class="tombol" style="margin-top:16px" type="submit">Masuk</button>
         </form>
@@ -47,7 +47,7 @@ function masuk() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     try {
-      await api('/api/admin/masuk', { method: 'POST', body: { username: data.get('username'), password: data.get('password') } });
+      await api('/api/admin/masuk', { method: 'POST', body: { phone: data.get('phone'), pin: data.get('pin') } });
       await buka();
     } catch (error) {
       const galat = aplikasi.querySelector('#galat');
@@ -112,7 +112,7 @@ function gambarHari() {
     return `<h1 style="margin-top:0">Dasbor</h1>
       <div class="peringatan"><strong>Ganti kata sandi awal sebelum memakai dasbor.</strong>
         <form id="ganti" class="baris" style="margin-top:8px">
-          <input name="password" type="password" minlength="8" placeholder="Kata sandi baru" required>
+          <input name="pin" type="password" inputmode="numeric" minlength="4" maxlength="6" placeholder="PIN baru" required>
           <button class="tombol" type="submit">Ganti</button>
         </form>
         <p id="sandi-pesan" class="mini"></p>
@@ -192,6 +192,13 @@ function gambarPengaturan() {
       <label class="cek"><input name="audioAnnouncements" type="checkbox" ${atur.audioAnnouncements === false ? '' : 'checked'}> Pengumuman suara</label>
       <button class="tombol" style="margin-top:12px" type="submit">Simpan pengaturan</button>
       <p id="atur-pesan" class="mini"></p>
+    </form>
+    <form id="ganti-pin" class="kartu">
+      <h2 style="margin-top:0;font-size:18px">PIN admin</h2>
+      <label for="pin-baru">PIN baru (4–6 angka)</label>
+      <input id="pin-baru" name="pin" type="password" inputmode="numeric" minlength="4" maxlength="6" required>
+      <button class="tombol" style="margin-top:12px" type="submit">Simpan PIN</button>
+      <p id="pin-pesan" class="mini"></p>
     </form>
     <form id="impor" class="kartu">
       <h2 style="margin-top:0;font-size:18px">Impor absensi lama</h2>
@@ -396,9 +403,9 @@ async function gambar() {
 function pasangAksi(isi) {
   isi.querySelector('#ganti')?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const password = new FormData(event.currentTarget).get('password');
+    const pin = new FormData(event.currentTarget).get('pin');
     try {
-      const hasil = await api('/api/admin/sandi', { method: 'POST', body: { password } });
+      const hasil = await api('/api/admin/pin', { method: 'POST', body: { pin } });
       state.saya.perluGantiSandi = false;
       await gambar();
     } catch (error) {
@@ -494,6 +501,17 @@ function pasangAksi(isi) {
         alert(error.message);
       }
     });
+  });
+  isi.querySelector('#ganti-pin')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const pin = new FormData(event.currentTarget).get('pin');
+    try {
+      const hasil = await api('/api/admin/pin', { method: 'POST', body: { pin } });
+      event.currentTarget.reset();
+      isi.querySelector('#pin-pesan').textContent = hasil.pesan;
+    } catch (error) {
+      isi.querySelector('#pin-pesan').textContent = error.message;
+    }
   });
   isi.querySelector('#pengaturan')?.addEventListener('submit', async (event) => {
     event.preventDefault();

@@ -1,37 +1,23 @@
-const WEAK_PASSWORDS = new Set([
-  'admin',
-  'password',
-  'changeme',
-  'secret',
-  'demo',
-  'demo-admin-123',
-  '123456',
-  '12345678',
-  'hadir',
-  'dblessmyra'
-]);
+import { isValidPhone, isValidPin, normalizePhone } from './phone.js';
 
 export function assertBootConfig(env = process.env) {
   const nodeEnv = env.NODE_ENV || 'development';
   const demoRequested = env.DEMO === '1';
-  const password = String(env.ADMIN_PASSWORD || '');
+  const adminPhone = normalizePhone(env.ADMIN_PHONE || '');
+  const adminPin = String(env.ADMIN_PIN || '').trim();
   if (nodeEnv === 'production') {
     if (demoRequested) {
       throw new Error('DEMO=1 tidak boleh dipakai di production.');
     }
-    if (password.length < 8 || WEAK_PASSWORDS.has(password)) {
-      throw new Error('ADMIN_PASSWORD wajib di production, minimal 8 karakter, dan bukan sandi bawaan.');
+    if (!isValidPhone(adminPhone) || !isValidPin(adminPin)) {
+      throw new Error('ADMIN_PHONE dan ADMIN_PIN wajib di production. PIN admin 4 sampai 6 angka.');
     }
   }
   return {
     nodeEnv,
     demo: demoRequested && nodeEnv !== 'production',
-    adminUser: String(env.ADMIN_USER || 'admin').trim() || 'admin',
-    adminPassword: password,
+    adminPhone: isValidPhone(adminPhone) ? adminPhone : '',
+    adminPin: isValidPin(adminPin) ? adminPin : '',
     demoPin: String(env.DEMO_PIN || '')
   };
-}
-
-export function isWeakPassword(password) {
-  return WEAK_PASSWORDS.has(String(password || ''));
 }

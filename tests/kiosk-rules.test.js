@@ -85,8 +85,8 @@ test('server menerapkan ambang, jeda, impor, dan pulang otomatis', async () => {
   process.env.COOKIE_SECURE = '0';
   process.env.DEMO = '1';
   process.env.DEMO_PIN = '908172';
-  process.env.ADMIN_USER = 'admin';
-  process.env.ADMIN_PASSWORD = 'test-admin-pass';
+  process.env.ADMIN_PHONE = '081299000001';
+  process.env.ADMIN_PIN = '9081';
   process.env.FACE_MATCH_MAX_DISTANCE = '0.5';
   const queue = [];
   faceRuntime.detect = async () => {
@@ -102,17 +102,10 @@ test('server menerapkan ambang, jeda, impor, dan pulang otomatis', async () => {
     const adminLogin = await request(server, {
       method: 'POST',
       path: '/api/admin/masuk',
-      json: { username: 'admin', password: 'test-admin-pass' }
+      json: { phone: '081299000001', pin: '9081' }
     });
     const adminCookie = cookiePair(adminLogin.setCookie, 'hadir_admin');
-    assert.equal(adminLogin.data.perluGantiSandi, true);
-    const ganti = await request(server, {
-      method: 'POST',
-      path: '/api/admin/sandi',
-      cookie: adminCookie,
-      json: { password: 'ganti-admin-9' }
-    });
-    assert.equal(ganti.status, 200, JSON.stringify(ganti.data));
+    assert.equal(adminLogin.data.perluGantiSandi, false);
     const hari = jakartaDateLabel(new Date());
     const csv = `nama;telepon;tanggal;masuk;pulang\r\nNisa Putri;081210000001;${hari};09:40;17:00\r\nAndi Wijaya;081210000002;${hari};07:30;\r\n`;
     const imported = await request(server, {

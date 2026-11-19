@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import multer from 'multer';
 import { BUSINESSES } from './demo-data.js';
 import { assertNotLocked, clearLoginFailures, recordLoginFailure } from './lockout.js';
-import { isWeakPassword } from './secrets.js';
 import { parseCompanyName } from './settings.js';
 import { assessEnrollment, assessLiveness, bestFaceDistance, evidenceFrameIndex } from './biometrics.js';
 import { faceRuntime } from './face.js';
@@ -109,7 +108,7 @@ function requireAdmin(req, res) {
     sendError(res, 'unauthorized', 401);
     return null;
   }
-  const allowed = req.path === '/api/admin/sandi' || req.path === '/api/admin/keluar' || req.path === '/api/admin/saya' || req.path === '/api/usaha';
+  const allowed = req.path === '/api/admin/pin' || req.path === '/api/admin/keluar' || req.path === '/api/admin/saya' || req.path === '/api/usaha';
   if (admin.must_change_password === 1 && !allowed) {
     sendError(res, 'password_change_required', 403);
     return null;
@@ -530,14 +529,14 @@ export function registerRoutes(app) {
 
   app.post('/api/admin/masuk', (req, res) => {
     if (!guardWrite(req, res)) return;
-    const username = String(req.body?.username || '').trim();
-    const password = String(req.body?.password || '');
-    const lockKey = `admin:${username || clientIp(req)}`;
-    if (!assertNotLocked(dbOf(req), lockKey).ok || !rateLimit(lockKey, { limit: 8, windowMs: 15 * 60 * 1000 })) {
+    const phone = normalizePhone(req.body?.phone);
+    const pin = String(req.body?.pin || '');
+    const lockKey = `admin:${phone || clientIp(req)}`;
+    if (!assertNotLocked(dbOf(req), lockKey).ok || !rateLimit(lockKey, { limit: 5, windowMs: 15 * 60 * 1000 })) {
       return sendError(res, 'locked', 429);
     }
-    const admin = repo.getAdminByUsername(dbOf(req), username);
-    const matches = verifySecret(password, admin?.password_hash || dummySecretHash());
+    const admin = isValidPhone(phone) ? repo.getAdminByPhone(dbOf(req), phone) : null;
+    const matches = verifySecret(pin, admin?.pin_hash || dummySecretHash());
     if (!admin || !matches) {
       recordLoginFailure(dbOf(req), lockKey);
       return sendError(res, 'admin_bad_credentials', 401);
@@ -551,7 +550,7 @@ export function registerRoutes(app) {
       expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()
     });
     setSessionCookie(res, configOf(req), 'admin', token);
-    sendOk(res, { namaPengguna: admin.username, perluGantiSandi: admin.must_change_password === 1 });
+    sendOk(res, { namaPengguna: admin.phone, perluGantiSandi: admin.must_change_password === 1 });
   });
 
   app.post('/api/admin/keluar', (req, res) => {
@@ -568,7 +567,7 @@ export function registerRoutes(app) {
     const config = configOf(req);
     const settings = repo.getSettings(dbOf(req), config);
     sendOk(res, {
-      namaPengguna: admin.username,
+      namaPengguna: admin.phone,
       namaPerusahaan: settings.companyName,
       perluGantiSandi: admin.must_change_password === 1,
       jarakWajahMaks: settings.faceDistanceThreshold,
@@ -626,16 +625,14 @@ export function registerRoutes(app) {
     sendOk(res, { ...settings, pesan: 'Pengaturan disimpan.' });
   });
 
-  app.post('/api/admin/sandi', (req, res) => {
+  app.post('/api/admin/pin', (req, res) => {
     if (!guardWrite(req, res)) return;
     const admin = requireAdmin(req, res);
     if (!admin) return;
-    const password = String(req.body?.password || '');
-    if (password.length < 8 || isWeakPassword(password) || verifySecret(password, admin.password_hash)) {
-      return sendError(res, 'password_weak');
-    }
-    repo.updateAdminPassword(dbOf(req), admin.id, hashSecret(password));
-    sendOk(res, { pesan: 'Kata sandi admin diperbarui.' });
+    const pin = String(req.body?.pin || '');
+    if (!isValidPin(pin) || verifySecret(pin, admin.pin_hash)) return sendError(res, 'pin_invalid');
+    repo.updateAdminPin(dbOf(req), admin.id, hashSecret(pin));
+    sendOk(res, { pesan: 'PIN admin diperbarui.' });
   });
 
   app.get('/api/admin/hari-ini', (req, res) => {

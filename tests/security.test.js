@@ -10,13 +10,14 @@ import { cookiePair, listen, multipart, request } from './http.js';
 import { makeJpeg } from './jpeg.js';
 
 test('production menolak sandi kosong, sandi bawaan, dan DEMO', () => {
-  assert.throws(() => assertBootConfig({ NODE_ENV: 'production', ADMIN_PASSWORD: '', DEMO: '0' }));
-  assert.throws(() => assertBootConfig({ NODE_ENV: 'production', ADMIN_PASSWORD: 'demo-admin-123', DEMO: '0' }));
-  assert.throws(() => assertBootConfig({ NODE_ENV: 'production', ADMIN_PASSWORD: 'sandi-kuat-1', DEMO: '1' }));
-  const ok = assertBootConfig({ NODE_ENV: 'production', ADMIN_PASSWORD: 'sandi-kuat-1', DEMO: '0', ADMIN_USER: 'admin' });
+  assert.throws(() => assertBootConfig({ NODE_ENV: 'production', ADMIN_PHONE: '', ADMIN_PIN: '', DEMO: '0' }));
+  assert.throws(() => assertBootConfig({ NODE_ENV: 'production', ADMIN_PHONE: '081299000001', ADMIN_PIN: '12', DEMO: '0' }));
+  assert.throws(() => assertBootConfig({ NODE_ENV: 'production', ADMIN_PHONE: '081299000001', ADMIN_PIN: '9081', DEMO: '1' }));
+  const ok = assertBootConfig({ NODE_ENV: 'production', ADMIN_PHONE: '6281299000001', ADMIN_PIN: '9081', DEMO: '0' });
   assert.equal(ok.demo, false);
-  assert.equal(ok.adminPassword, 'sandi-kuat-1');
-  const local = assertBootConfig({ NODE_ENV: 'test', DEMO: '1', DEMO_PIN: '908172', ADMIN_PASSWORD: '' });
+  assert.equal(ok.adminPhone, '081299000001');
+  assert.equal(ok.adminPin.length, 4);
+  const local = assertBootConfig({ NODE_ENV: 'test', DEMO: '1', DEMO_PIN: '908172', ADMIN_PHONE: '', ADMIN_PIN: '' });
   assert.equal(local.demo, true);
   assert.equal(parseCompanyName('<script>alert(1)</script>').ok, false);
   assert.equal(parseCompanyName('Toko Uji').name, 'Toko Uji');
@@ -39,15 +40,15 @@ test('wajah saja tidak masuk, kunci PIN, dan nama perusahaan aman', async () => 
     NODE_ENV: process.env.NODE_ENV,
     DEMO: process.env.DEMO,
     DEMO_PIN: process.env.DEMO_PIN,
-    ADMIN_USER: process.env.ADMIN_USER,
-    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD
+    ADMIN_PHONE: process.env.ADMIN_PHONE,
+    ADMIN_PIN: process.env.ADMIN_PIN
   };
   process.env.DATA_DIR = dir;
   process.env.NODE_ENV = 'test';
   process.env.DEMO = '1';
   process.env.DEMO_PIN = '908172';
-  process.env.ADMIN_USER = 'admin';
-  process.env.ADMIN_PASSWORD = 'test-admin-pass';
+  process.env.ADMIN_PHONE = '081299000001';
+  process.env.ADMIN_PIN = '9081';
   const queue = [];
   faceRuntime.detect = async () => queue.shift();
   const { createApp } = await import('../src/app.js');
@@ -68,17 +69,17 @@ test('wajah saja tidak masuk, kunci PIN, dan nama perusahaan aman', async () => 
     const adminLogin = await request(server, {
       method: 'POST',
       path: '/api/admin/masuk',
-      json: { username: 'admin', password: 'test-admin-pass' }
+      json: { phone: '6281299000001', pin: '9081' }
     });
+    assert.equal(adminLogin.data.perluGantiSandi, false);
     const adminCookie = cookiePair(adminLogin.setCookie, 'hadir_admin');
-    const blocked = await request(server, { path: '/api/admin/hari-ini', cookie: adminCookie });
-    assert.equal(blocked.status, 403);
-    assert.equal(blocked.data.error, 'password_change_required');
+    const board = await request(server, { path: '/api/admin/hari-ini', cookie: adminCookie });
+    assert.equal(board.status, 200, JSON.stringify(board.data));
     const changed = await request(server, {
       method: 'POST',
-      path: '/api/admin/sandi',
+      path: '/api/admin/pin',
       cookie: adminCookie,
-      json: { password: 'ganti-admin-9' }
+      json: { pin: '4321' }
     });
     assert.equal(changed.status, 200, JSON.stringify(changed.data));
 
@@ -163,14 +164,14 @@ test('wajah saja tidak masuk, kunci PIN, dan nama perusahaan aman', async () => 
       const badAdmin = await request(server, {
         method: 'POST',
         path: '/api/admin/masuk',
-        json: { username: 'orang-lain', password: 'salah-sekali' }
+        json: { phone: '081211110000', pin: '1111' }
       });
       assert.equal(badAdmin.status, 401);
     }
     const adminLocked = await request(server, {
       method: 'POST',
       path: '/api/admin/masuk',
-      json: { username: 'orang-lain', password: 'salah-sekali' }
+      json: { phone: '081211110000', pin: '1111' }
     });
     assert.equal(adminLocked.status, 429);
     assert.equal(adminLocked.data.error, 'locked');

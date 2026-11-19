@@ -19,9 +19,9 @@ Buka <http://localhost:3000> untuk karyawan dan <http://localhost:3000/admin> un
 
 ## Akun
 
-Tidak ada sandi atau PIN bawaan di repo. Di `.env`, isi `ADMIN_PASSWORD` (minimal 8 karakter). Server production menolak jalan jika sandi itu kosong, terlalu pendek, atau sandi umum, dan menolak `DEMO=1`.
+Tidak ada nomor HP atau PIN bawaan di repo. Di `.env`, isi `ADMIN_PHONE` dan `ADMIN_PIN` (4–6 angka). Server production menolak jalan jika keduanya tidak valid, dan menolak `DEMO=1`.
 
-Admin pertama dibuat dari `ADMIN_USER` dan `ADMIN_PASSWORD`, lalu wajib mengganti sandi itu sebelum dasbor bisa dipakai. PIN karyawan di-hash.
+Admin masuk dengan nomor HP dan PIN itu. Nilai disimpan sebagai hash. PIN bisa diganti dari pengaturan. PIN karyawan juga di-hash.
 
 Data percobaan (tiga lokasi contoh dan tiga karyawan) hanya muncul jika `DEMO=1` dan `DEMO_PIN` diisi, dan tidak pernah di production. Wajah belum terdaftar sampai admin mengambil lima sudut.
 
@@ -44,7 +44,7 @@ Foto bukti tersimpan di `data/uploads/` dan tidak masuk git.
 cp .env.example .env
 ```
 
-4. Di `.env`, isi `ADMIN_PASSWORD` yang kuat, `DOMAIN=absen.domain-anda.com`, lalu set `COOKIE_SECURE=1`, `TRUST_PROXY=1`, dan `NODE_ENV=production`. Jangan set `DEMO=1`.
+4. Di `.env`, isi `ADMIN_PHONE` dan `ADMIN_PIN`, `DOMAIN=absen.domain-anda.com`, lalu set `COOKIE_SECURE=1`, `TRUST_PROXY=1`, dan `NODE_ENV=production`. Jangan set `DEMO=1`.
 5. Jalankan:
 
 ```bash
