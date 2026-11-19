@@ -204,8 +204,9 @@ export function watchLiveness(video, { onStatus, signal }) {
         try {
           const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks();
           if (stopped) return;
-          if (!detection) onStatus('Wajah belum terlihat. Hadap kamera di tempat terang.');
+          if (!detection) onStatus?.('Ready', 'ready');
           else {
+            onStatus?.('Wajah terlihat. Kedipkan mata sekali, atau gelengkan kepala pelan.', 'scanning');
             const reading = metrics(detection.landmarks);
             const blob = await snapshot(video);
             if (blob) {
@@ -219,7 +220,6 @@ export function watchLiveness(video, { onStatus, signal }) {
                 return;
               }
             }
-            onStatus('Wajah terlihat. Kedipkan mata sekali, atau gelengkan kepala pelan.');
           }
         } catch (error) {
           stopped = true;
@@ -232,6 +232,65 @@ export function watchLiveness(video, { onStatus, signal }) {
       if (!stopped) requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
+  });
+}
+
+export function waitUntilNoFace(video, { signal, holdMs = 800 } = {}) {
+  const faceapi = window.faceapi;
+  if (!faceapi?.nets?.tinyFaceDetector?.isLoaded) return Promise.resolve();
+  const options = new faceapi.TinyFaceDetectorOptions(OPTIONS);
+  let stopped = false;
+  let busy = false;
+  let clearSince = 0;
+  return new Promise((resolve, reject) => {
+    const selesai = () => {
+      if (stopped) return;
+      stopped = true;
+      signal?.removeEventListener('abort', batalkan);
+      resolve();
+    };
+    const batalkan = () => {
+      if (stopped) return;
+      stopped = true;
+      signal?.removeEventListener('abort', batalkan);
+      const error = new Error('Dibatalkan');
+      error.name = 'AbortError';
+      reject(error);
+    };
+    if (signal?.aborted) {
+      batalkan();
+      return;
+    }
+    signal?.addEventListener('abort', batalkan);
+    const loop = async () => {
+      if (stopped) return;
+      if (!busy) {
+        busy = true;
+        try {
+          const detection = await faceapi.detectSingleFace(video, options);
+          if (stopped) return;
+          if (detection) clearSince = 0;
+          else {
+            const now = performance.now();
+            if (!clearSince) clearSince = now;
+            if (now - clearSince >= holdMs) {
+              selesai();
+              return;
+            }
+          }
+        } catch (error) {
+          if (stopped) return;
+          stopped = true;
+          signal?.removeEventListener('abort', batalkan);
+          reject(error);
+          return;
+        } finally {
+          busy = false;
+        }
+      }
+      if (!stopped) setTimeout(loop, 140);
+    };
+    loop();
   });
 }
 

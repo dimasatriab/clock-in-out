@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { ensureModels, openCamera, stopStream, watchLiveness } from './face-capture.js';
+import { ensureModels, openCamera, stopStream, waitUntilNoFace, watchLiveness } from './face-capture.js';
 import { durasi, esc, jam, jamPendek, sapaan, tanggalPanjang, tanggalPendek } from './format.js';
 
 const layar = document.querySelector('#layar');
@@ -7,8 +7,8 @@ const kamera = document.querySelector('#kamera');
 const video = document.querySelector('#video');
 const tombolPin = document.querySelector('#kamera-pin');
 const tombolStatus = document.querySelector('#kamera-riwayat');
-const jamKamera = document.querySelector('#kamera-jam');
 const lampu = document.querySelector('#lampu');
+const teksStatus = document.querySelector('#kamera-status');
 let stream;
 let cameraAbort;
 let tick;
@@ -142,8 +142,32 @@ function masihLayar(token) {
   return token === layarToken;
 }
 
-function setLampu(siap) {
-  lampu.className = siap ? 'lampu hijau' : 'lampu merah';
+function setStatus(teks, fase) {
+  if (teksStatus) teksStatus.textContent = teks;
+  const kelas = { ready: 'siap', scanning: 'pindai', error: 'gagal', success: 'berhasil' }[fase] || 'siap';
+  if (lampu) lampu.className = `titik ${kelas}`;
+}
+
+function tunggu(ms, signal) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
+}
+
+async function selesaiPutaran(signal, token) {
+  await tunggu(1800, signal);
+  if (signal.aborted || !masihLayar(token)) return;
+  try {
+    await waitUntilNoFace(video, { signal });
+  } catch (error) {
+    if (signal.aborted || error.name === 'AbortError') return;
+  }
+  if (signal.aborted || !masihLayar(token)) return;
+  setStatus('Ready', 'ready');
 }
 
 async function layarDepan() {
@@ -154,52 +178,72 @@ async function layarDepan() {
   layar.innerHTML = '';
   kamera.hidden = false;
   clearInterval(tick);
-  jamKamera.textContent = jam();
-  tick = setInterval(() => { jamKamera.textContent = jam(); }, 1000);
-  setLampu(false);
+  setStatus('Ready', 'ready');
+  posisi().catch(() => {});
   try {
-    const pos = await posisi();
-    if (!masihLayar(token) || signal.aborted) return;
-    await ensureModels();
+    await ensureModels((teks) => {
+      if (masihLayar(token) && !signal.aborted) setStatus(teks, 'scanning');
+    });
     if (!masihLayar(token) || signal.aborted) return;
     if (!stream) stream = await openCamera(video);
-    if (!masihLayar(token)) return;
-    setLampu(true);
-    await pindai(pos, signal, token);
+    if (!masihLayar(token) || signal.aborted) return;
+    setStatus('Ready', 'ready');
+    await pindai(signal, token);
   } catch (error) {
     if (!masihLayar(token) || signal.aborted || error.name === 'AbortError') return;
-    setLampu(false);
+    setStatus(error.message || 'Kamera depan tidak siap.', 'error');
   }
 }
 
-async function pindai(pos, signal, token) {
-  try {
-    while (!signal.aborted && masihLayar(token)) {
-      setLampu(true);
-      const gerak = await watchLiveness(video, { signal });
-      if (signal.aborted || !masihLayar(token)) return;
-      const titik = await posisi().catch(() => null);
-      if (!titik) {
-        setLampu(false);
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        continue;
-      }
-      const form = new FormData();
-      form.set('lat', String(titik.lat));
-      form.set('lng', String(titik.lng));
-      form.set('accuracy', String(titik.accuracy));
-      gerak.frames.forEach((frame, index) => form.append('frame', frame.blob, `wajah-${index}.jpg`));
-      try {
-        await api('/api/karyawan/kenali', { method: 'POST', form });
-        setLampu(true);
-      } catch {
-        setLampu(false);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1800));
+async function pindai(signal, token) {
+  while (!signal.aborted && masihLayar(token)) {
+    let gerak;
+    try {
+      gerak = await watchLiveness(video, {
+        signal,
+        onStatus(teks, fase) {
+          if (signal.aborted || !masihLayar(token)) return;
+          if (fase === 'ready') setStatus('Ready', 'ready');
+          else setStatus(teks, 'scanning');
+        }
+      });
+    } catch (error) {
+      if (signal.aborted || error.name === 'AbortError' || !masihLayar(token)) return;
+      setStatus(error.message, 'error');
+      await tunggu(1800, signal);
+      continue;
     }
-  } catch (error) {
-    if (signal.aborted || error.name === 'AbortError') return;
-    setLampu(false);
+    if (signal.aborted || !masihLayar(token)) return;
+    setStatus('Mengecek lokasi…', 'scanning');
+    let titik;
+    try {
+      titik = await posisi();
+    } catch (error) {
+      if (signal.aborted || !masihLayar(token)) return;
+      setStatus(error.message, 'error');
+      await selesaiPutaran(signal, token);
+      continue;
+    }
+    if (signal.aborted || !masihLayar(token)) return;
+    setStatus('Mencocokkan wajah…', 'scanning');
+    const form = new FormData();
+    form.set('lat', String(titik.lat));
+    form.set('lng', String(titik.lng));
+    form.set('accuracy', String(titik.accuracy));
+    gerak.frames.forEach((frame, index) => form.append('frame', frame.blob, `wajah-${index}.jpg`));
+    let fase = 'error';
+    let teks = 'Absen gagal.';
+    try {
+      const hasil = await api('/api/karyawan/kenali', { method: 'POST', form });
+      fase = 'success';
+      teks = hasil.pesan || 'Absen tercatat.';
+    } catch (error) {
+      fase = 'error';
+      teks = error.message;
+    }
+    if (signal.aborted || !masihLayar(token)) return;
+    setStatus(teks, fase);
+    await selesaiPutaran(signal, token);
   }
 }
 

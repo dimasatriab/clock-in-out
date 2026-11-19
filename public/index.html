@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f2f2f7">
+  <meta name="theme-color" content="#ffffff">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="robots" content="noindex">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,15 +16,26 @@
 </head>
 <body>
   <main class="kerangka" id="layar"></main>
-  <div id="kamera" class="kamera">
-    <video id="video" autoplay muted playsinline></video>
-    <div class="cincin"></div>
-    <div class="lembar">
-      <p id="kamera-jam"></p>
-      <p id="kamera-status" class="sr"></p>
-      <div class="baris">
-        <button class="tombol-kedua" id="kamera-pin" type="button">Masuk dengan PIN</button>
-        <button class="tombol-kedua" id="kamera-riwayat" type="button"><span id="lampu" class="lampu merah"></span>Status</button>
+  <div id="kamera" class="depan">
+    <div class="depan-isi">
+      <header class="depan-kepala">
+        <h1 class="depan-judul"><span>DBLESSMYRA</span><span>Attendance</span></h1>
+        <button class="tautan-halus" id="kamera-riwayat" type="button">Status</button>
+      </header>
+      <div class="depan-pusat">
+        <div class="depan-grup">
+          <div class="lingkar">
+            <video id="video" autoplay muted playsinline></video>
+          </div>
+          <p class="depan-status">
+            <span id="lampu" class="titik siap"></span>
+            <span id="kamera-status">Ready</span>
+          </p>
+        </div>
+      </div>
+      <div class="depan-kaki">
+        <p class="pin-label" id="pin-label">login with pin</p>
+        <button class="tombol-garis" id="kamera-pin" type="button" aria-labelledby="pin-label"></button>
       </div>
     </div>
   </div>
