@@ -244,7 +244,7 @@ function opsiLokasi(orang) {
     <label class="cek"><input type="checkbox" name="everywhere" ${orang.everywhere ? 'checked' : ''}> Everywhere</label>
     <p class="mini">Boleh absen dari mana saja. Koordinat dan akurasi GPS tetap dicatat.</p>
     ${state.lokasi.map((lokasi) => `
-    <label class="cek"><input type="checkbox" name="locationIds" value="${lokasi.id}" ${selected.includes(lokasi.id) ? 'checked' : ''}> ${esc(lokasi.name)}</label>
+    <label class="cek"><input type="checkbox" name="locationIds" value="${lokasi.id}" ${selected.includes(lokasi.id) ? 'checked' : ''}> ${esc(lokasi.name)}${lokasi.active ? '' : ' (nonaktif)'}</label>
   `).join('')}</div>`;
 }
 
@@ -260,6 +260,7 @@ function formKaryawan(orang = {}) {
       <label>Toleransi terlambat (menit)</label><input name="graceMinutes" type="number" min="0" max="180" value="${esc(orang.graceMinutes ?? 10)}">
       <label>Lokasi yang diizinkan</label>${opsiLokasi(orang)}
       <label class="cek"><input type="checkbox" name="active" ${orang.active === false ? '' : 'checked'}> Akun aktif</label>
+      <p class="karyawan-pesan pesan buruk" hidden></p>
       <button class="tombol" style="margin-top:12px" type="submit">Simpan</button>
     </form>`;
 }
@@ -434,9 +435,31 @@ function pasangAksi(isi) {
     }
   });
   isi.querySelectorAll('form[data-karyawan]').forEach((form) => {
+    const pesan = form.querySelector('.karyawan-pesan');
+    const tampil = (teks) => {
+      pesan.hidden = !teks;
+      pesan.textContent = teks || '';
+      if (teks) pesan.scrollIntoView({ block: 'nearest' });
+    };
+    form.querySelector('button[type="submit"]').addEventListener('click', (event) => {
+      const kurang = [...form.elements].find((el) => el.willValidate && !el.checkValidity());
+      if (!kurang) return;
+      event.preventDefault();
+      kurang.scrollIntoView({ block: 'center' });
+      kurang.focus();
+      tampil(kurang.validationMessage || 'Lengkapi data karyawan.');
+    });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
+      tampil('');
       const data = new FormData(form);
+      const everywhere = data.get('everywhere') === 'on';
+      const locationIds = data.getAll('locationIds').map(Number).filter((id) => Number.isInteger(id) && id > 0);
+      if (!everywhere && locationIds.length === 0) {
+        tampil('Pilih Everywhere atau minimal satu lokasi.');
+        form.querySelector('input[name="everywhere"]')?.scrollIntoView({ block: 'center' });
+        return;
+      }
       const body = {
         name: data.get('name'),
         phone: data.get('phone'),
@@ -444,16 +467,19 @@ function pasangAksi(isi) {
         businessId: data.get('businessId'),
         shiftStart: data.get('shiftStart'),
         graceMinutes: Number(data.get('graceMinutes')),
-        locationIds: data.getAll('locationIds').map(Number),
-        everywhere: data.get('everywhere') === 'on',
+        locationIds,
+        everywhere,
         active: data.get('active') === 'on'
       };
       const id = form.dataset.karyawan;
+      const tombol = form.querySelector('button[type="submit"]');
+      tombol.disabled = true;
       try {
         await api(id ? `/api/admin/karyawan/${id}` : '/api/admin/karyawan', { method: id ? 'PATCH' : 'POST', body });
         await gambar();
       } catch (error) {
-        alert(error.message);
+        tombol.disabled = false;
+        tampil(error.message);
       }
     });
   });

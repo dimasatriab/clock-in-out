@@ -82,6 +82,24 @@ test('Everywhere mengizinkan absen di luar pagar dan lokasi biasa tetap ditolak'
       }
     });
     assert.equal(kosong.status, 400);
+    assert.equal(kosong.data.error, 'need_location');
+    const hpSalah = await request(server, {
+      method: 'POST',
+      path: '/api/admin/karyawan',
+      cookie: adminCookie,
+      json: {
+        name: 'Sari Baru',
+        phone: '12345',
+        pin: '1357',
+        businessId: 'toko',
+        graceMinutes: 10,
+        locationIds: [nisa.locationIds[0]].filter(Boolean),
+        everywhere: false,
+        active: true
+      }
+    });
+    assert.equal(hpSalah.status, 400);
+    assert.equal(hpSalah.data.error, 'phone_invalid');
 
     const bebas = await request(server, {
       method: 'PATCH',

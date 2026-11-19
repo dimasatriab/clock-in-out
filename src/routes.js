@@ -871,13 +871,14 @@ function saveEmployeeFromBody(req, id) {
   const locationIds = Array.isArray(body.locationIds) ? [...new Set(body.locationIds.map(Number))] : [];
   const everywhere = body.everywhere === true || body.everywhere === 1 || body.everywhere === '1';
   const pin = body.pin == null || body.pin === '' ? '' : String(body.pin);
-  if (!name || !isValidPhone(phone) || !validBusiness(businessId) || !shift.ok) return { error: 'bad_request' };
+  if (!name || !validBusiness(businessId) || !shift.ok) return { error: 'bad_request' };
+  if (!isValidPhone(phone)) return { error: 'phone_invalid' };
   if (!Number.isInteger(grace) || grace < 0 || grace > 180) return { error: 'bad_request' };
   if (!id && !isValidPin(pin)) return { error: 'pin_invalid' };
   if (pin && !isValidPin(pin)) return { error: 'pin_invalid' };
   const places = locationIds.map((locationId) => repo.getLocation(dbOf(req), locationId));
   if (places.some((location) => !location || location.scope === 'everywhere')) return { error: 'bad_request' };
-  if (!everywhere && places.length === 0) return { error: 'bad_request' };
+  if (!everywhere && !places.some((location) => location.active)) return { error: 'need_location' };
   const existing = repo.getEmployeeByPhone(dbOf(req), phone);
   if (existing && existing.id !== id) return { error: 'phone_taken', status: 409 };
   const pinHash = pin ? hashSecret(pin) : null;

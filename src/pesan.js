@@ -36,6 +36,8 @@ export const PESAN = {
   challenge: 'Sesi kamera kedaluwarsa. Ulangi proses absen.',
   models_not_ready: 'Pemeriksa wajah belum siap. Coba lagi sebentar, atau jalankan penyiapan model.',
   bad_request: 'Data yang dikirim tidak lengkap atau tidak valid.',
+  phone_invalid: 'Nomor HP harus diawali 08 dan berisi 10–14 angka.',
+  need_location: 'Pilih Everywhere atau minimal satu lokasi yang aktif.',
   phone_taken: 'Nomor HP itu sudah dipakai karyawan lain.',
   not_found: 'Data tidak ditemukan.',
   location_in_use: 'Lokasi masih dipakai data absensi. Nonaktifkan saja, jangan dihapus.',
