@@ -135,17 +135,12 @@ test('Everywhere mengizinkan absen di luar pagar dan lokasi biasa tetap ditolak'
     });
     assert.equal(lemah.data.error, 'gps_inaccurate');
 
-    const poses = ['lurus', 'kiri', 'kanan', 'atas', 'bawah'];
-    queue.push(face(0.3, 0), face(0.3, -0.22), face(0.3, 0.22), face(0.3, 0, -0.12), face(0.3, 0, 0.12));
+    queue.push(face(0.3, 0));
     const enrolled = await request(server, {
       method: 'POST',
       path: `/api/admin/karyawan/${nisa.id}/wajah`,
       cookie: adminCookie,
-      form: multipart({ pose: poses }, poses.map((pose, index) => ({
-        field: 'foto',
-        filename: `${pose}.jpg`,
-        buffer: makeJpeg(20 + index)
-      })))
+      form: multipart({}, [{ field: 'foto', filename: 'depan.jpg', buffer: makeJpeg(20) }])
     });
     assert.equal(enrolled.status, 200, JSON.stringify(enrolled.data));
 

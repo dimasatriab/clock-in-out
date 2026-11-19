@@ -177,8 +177,6 @@ function gambarPengaturan() {
       <input name="companyName" maxlength="40" required value="${esc(atur.companyName || 'DBLESSMYRA')}">
       <label>Ambang jarak wajah (lebih kecil lebih ketat)</label>
       <input name="faceDistanceThreshold" type="number" min="0.2" max="0.8" step="0.01" value="${esc(atur.faceDistanceThreshold ?? 0.5)}" required>
-      <label>Lewati frame (frame skip)</label>
-      <input name="frameSkip" type="number" min="1" max="10" value="${esc(atur.frameSkip ?? 3)}" required>
       <label>Batas konfirmasi (detik)</label>
       <input name="confirmationTimeoutSeconds" type="number" min="3" max="60" value="${esc(atur.confirmationTimeoutSeconds ?? 10)}" required>
       <label>Jeda antar absen (detik)</label>
@@ -189,8 +187,6 @@ function gambarPengaturan() {
       <input name="autoClockOutTime" type="time" value="${esc(atur.autoClockOutTime || '20:00')}" required>
       <label>Batas terlambat</label>
       <input name="lateThreshold" type="time" step="1" value="${esc((atur.lateThreshold || '09:30:00').slice(0, 8))}" required>
-      <label>Maksimum foto pendaftaran</label>
-      <input name="maxEnrollmentFrames" type="number" min="5" max="40" value="${esc(atur.maxEnrollmentFrames ?? 12)}" required>
       <label class="cek"><input name="audioAnnouncements" type="checkbox" ${atur.audioAnnouncements === false ? '' : 'checked'}> Pengumuman suara</label>
       <button class="tombol" style="margin-top:12px" type="submit">Simpan pengaturan</button>
       <p id="atur-pesan" class="mini"></p>
@@ -454,8 +450,9 @@ function pasangAksi(isi) {
       tampil('');
       const data = new FormData(form);
       const everywhere = data.get('everywhere') === 'on';
+      const active = data.get('active') === 'on';
       const locationIds = data.getAll('locationIds').map(Number).filter((id) => Number.isInteger(id) && id > 0);
-      if (!everywhere && locationIds.length === 0) {
+      if (active && !everywhere && locationIds.length === 0) {
         tampil('Pilih Everywhere atau minimal satu lokasi.');
         form.querySelector('input[name="everywhere"]')?.scrollIntoView({ block: 'center' });
         return;
@@ -469,7 +466,7 @@ function pasangAksi(isi) {
         graceMinutes: Number(data.get('graceMinutes')),
         locationIds,
         everywhere,
-        active: data.get('active') === 'on'
+        active
       };
       const id = form.dataset.karyawan;
       const tombol = form.querySelector('button[type="submit"]');
@@ -568,13 +565,11 @@ function pasangAksi(isi) {
     const body = {
       companyName: data.get('companyName'),
       faceDistanceThreshold: Number(data.get('faceDistanceThreshold')),
-      frameSkip: Number(data.get('frameSkip')),
       confirmationTimeoutSeconds: Number(data.get('confirmationTimeoutSeconds')),
       detectionCooldownSeconds: Number(data.get('detectionCooldownSeconds')),
       sharpnessMin: Number(data.get('sharpnessMin')),
       autoClockOutTime: data.get('autoClockOutTime'),
       lateThreshold: late.length === 5 ? `${late}:00` : late,
-      maxEnrollmentFrames: Number(data.get('maxEnrollmentFrames')),
       audioAnnouncements: data.get('audioAnnouncements') === 'on'
     };
     try {
@@ -639,25 +634,12 @@ function gambarLingkaran() {
   peta.setView([lat, lng], 16);
 }
 
-const POSE_DAFTAR = [
-  ['lurus', 'Hadap lurus ke kamera.'],
-  ['kiri', 'Menoleh ke kiri.'],
-  ['kanan', 'Menoleh ke kanan.'],
-  ['atas', 'Angkat dagu, lihat sedikit ke atas.'],
-  ['bawah', 'Tundukkan dagu sedikit.']
-];
-
-function poseCukup(nama, pose) {
-  const yaw = pose.yaw;
-  const pitch = pose.pitch;
+function wajahDepan(pose) {
+  if (!pose) return 'Arahkan wajah ke lingkaran.';
   if ((pose.score ?? 1) < 0.45) return 'Wajah kurang jelas.';
   if ((pose.sharpness ?? 999) < 50) return 'Foto terlalu datar. Jangan memakai cetakan.';
   if ((pose.box?.width ?? 200) < 80) return 'Dekatkan wajah.';
-  if (nama === 'lurus' && (Math.abs(yaw) > 0.22 || Math.abs(pitch) > 0.2)) return 'Hadap lebih lurus.';
-  if (nama === 'kiri' && yaw > -0.1) return 'Menoleh lebih ke kiri.';
-  if (nama === 'kanan' && yaw < 0.1) return 'Menoleh lebih ke kanan.';
-  if (nama === 'atas' && pitch > -0.06) return 'Angkat dagu sedikit lagi.';
-  if (nama === 'bawah' && pitch < 0.06) return 'Tundukkan dagu sedikit lagi.';
+  if (Math.abs(pose.yaw) > 0.22 || Math.abs(pose.pitch) > 0.2) return 'Hadap lurus ke kamera.';
   return '';
 }
 
@@ -667,7 +649,7 @@ function tunggu(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function ambilPoseOtomatis(nama, petunjuk, index) {
+function ambilDepan() {
   const cincin = document.querySelector('.cincin');
   const ambil = document.querySelector('#kamera-ambil');
   const batal = document.querySelector('#kamera-batal');
@@ -678,20 +660,18 @@ function ambilPoseOtomatis(nama, petunjuk, index) {
     const stop = watchPose(video, {
       onFrame(pose) {
         if (selesai || mengambil) return;
-        const alasan = pose ? poseCukup(nama, pose) : 'Arahkan wajah ke lingkaran.';
+        const alasan = wajahDepan(pose);
         if (alasan) {
           baikSejak = 0;
           cincin.classList.remove('siap');
-          statusKamera.textContent = `${index}/${POSE_DAFTAR.length}. ${alasan}`;
+          statusKamera.textContent = alasan;
           return;
         }
         const now = performance.now();
         if (!baikSejak) baikSejak = now;
         cincin.classList.add('siap');
-        statusKamera.textContent = now - baikSejak >= TUNGGU_POSE
-          ? `${index}/${POSE_DAFTAR.length}. Mengambil…`
-          : `${index}/${POSE_DAFTAR.length}. ${petunjuk} Tahan sebentar…`;
-        if (now - baikSejak >= TUNGGU_POSE) simpan();
+        statusKamera.textContent = now - baikSejak >= TUNGGU_POSE ? 'Mengambil foto depan…' : 'Tahan sebentar…';
+        if (now - baikSejak >= TUNGGU_POSE) simpan(3);
       }
     });
     const bersih = () => {
@@ -700,23 +680,28 @@ function ambilPoseOtomatis(nama, petunjuk, index) {
       batal.removeEventListener('click', onBatal);
       cincin.classList.remove('siap');
     };
-    const simpan = async () => {
+    const simpan = async (jumlah) => {
       if (selesai || mengambil) return;
       mengambil = true;
-      const pose = await capturePose(video);
-      const alasan = pose ? poseCukup(nama, pose) : 'Arahkan wajah ke lingkaran.';
-      if (alasan) {
-        mengambil = false;
-        baikSejak = 0;
-        cincin.classList.remove('siap');
-        statusKamera.textContent = `${index}/${POSE_DAFTAR.length}. ${alasan}`;
-        return;
+      const shots = [];
+      for (let i = 0; i < jumlah; i += 1) {
+        const pose = await capturePose(video);
+        const alasan = wajahDepan(pose);
+        if (alasan) {
+          mengambil = false;
+          baikSejak = 0;
+          cincin.classList.remove('siap');
+          statusKamera.textContent = alasan;
+          return;
+        }
+        shots.push(pose);
+        if (i < jumlah - 1) await tunggu(120);
       }
       selesai = true;
       bersih();
-      resolve({ ...pose, pose: nama });
+      resolve(shots);
     };
-    const onAmbil = () => { simpan(); };
+    const onAmbil = () => { simpan(1); };
     const onBatal = () => {
       if (selesai) return;
       selesai = true;
@@ -736,17 +721,12 @@ async function daftarWajah(id) {
     statusKamera.textContent = 'Menyiapkan kamera…';
     await ensureModels((text) => { statusKamera.textContent = text; });
     stream = await openCamera(video);
-    for (let i = 0; i < POSE_DAFTAR.length; i += 1) {
-      const [nama, petunjuk] = POSE_DAFTAR[i];
-      statusKamera.textContent = `${i + 1}/${POSE_DAFTAR.length}. ${petunjuk}`;
-      const shot = await ambilPoseOtomatis(nama, petunjuk, i + 1);
-      shots.push(shot);
-      if (i < POSE_DAFTAR.length - 1) await tunggu(280);
-    }
+    statusKamera.textContent = 'Hadapkan wajah lurus ke lingkaran.';
+    const hasilFoto = await ambilDepan();
+    shots.push(...hasilFoto);
     statusKamera.textContent = 'Menyimpan wajah…';
     const form = new FormData();
     shots.forEach((shot, index) => {
-      form.append('pose', shot.pose);
       form.append('foto', shot.blob, `daftar-${index}.jpg`);
     });
     const hasil = await api(`/api/admin/karyawan/${id}/wajah`, { method: 'POST', form });

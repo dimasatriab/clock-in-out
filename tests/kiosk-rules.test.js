@@ -150,17 +150,12 @@ test('server menerapkan ambang, jeda, impor, dan pulang otomatis', async () => {
     const karyawan = await request(server, { path: '/api/admin/karyawan', cookie: adminCookie });
     const sri = karyawan.data.karyawan.find((item) => item.name === 'Sri Rahayu');
     const rumah = karyawan.data.lokasi.find((item) => item.name.includes('Rumah'));
-    const poses = ['lurus', 'kiri', 'kanan', 'atas', 'bawah'];
-    queue.push(face(0.3, 0), face(0.3, -0.2), face(0.3, 0.2), face(0.3, 0, 0, -0.12), face(0.3, 0, 0, 0.12));
+    queue.push(face(0.3, 0));
     const enrolled = await request(server, {
       method: 'POST',
       path: `/api/admin/karyawan/${sri.id}/wajah`,
       cookie: adminCookie,
-      form: multipart({ pose: poses }, poses.map((pose, index) => ({
-        field: 'foto',
-        filename: `${pose}.jpg`,
-        buffer: makeJpeg(20 + index)
-      })))
+      form: multipart({}, [{ field: 'foto', filename: 'depan.jpg', buffer: makeJpeg(20) }])
     });
     assert.equal(enrolled.status, 200, JSON.stringify(enrolled.data));
 

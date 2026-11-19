@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { ensureModels, openCamera, stopStream, watchLiveness } from './face-capture.js';
+import { ensureModels, openCamera, stopStream, watchFace } from './face-capture.js';
 import { durasi, esc, jam, jamPendek, sapaan, tanggalPanjang, tanggalPendek } from './format.js';
 
 const layar = document.querySelector('#layar');
@@ -89,7 +89,7 @@ async function tampilBeranda(pesanAwal) {
       <h1 style="margin:4px 0 8px">${esc(data.karyawan.name)}</h1>
       <p>${terbuka ? `Sudah masuk pukul ${esc(jamPendek(terbuka.clockInAt))} di ${esc(terbuka.locationName)}.` : 'Belum absen masuk hari ini.'}</p>
       <p class="mini">${data.karyawan.shiftStart ? `Jadwal masuk ${esc(data.karyawan.shiftStart)} · toleransi ${esc(data.karyawan.graceMinutes)} menit` : 'Tidak ada jam masuk tetap.'}</p>
-      <p class="mini">Wajah tersimpan: ${esc(data.karyawan.faceSampleCount)} sampel. ${data.karyawan.faceSampleCount < 5 ? 'Minta admin mendaftarkan lima sudut wajah.' : ''}</p>
+      <p class="mini">Wajah tersimpan: ${esc(data.karyawan.faceSampleCount)} foto. ${data.karyawan.faceSampleCount < 1 ? 'Minta admin mengambil foto depan.' : ''}</p>
       <div id="lokasi-status" class="pesan">Mengecek lokasi…</div>
       <button class="tombol" id="absen" type="button" style="margin-top:14px">Kembali ke kamera</button>
       <button class="tombol-kedua" id="segar" type="button" style="margin-top:8px">Perbarui lokasi</button>
@@ -273,9 +273,8 @@ async function pindai(signal, token, awal) {
     setStatus('Ready', 'ready');
     let gerak;
     try {
-      gerak = await watchLiveness(video, {
+      gerak = await watchFace(video, {
         signal,
-        frameSkip: pengaturan.frameSkip || 3,
         onBox: gambarKotak,
         onStatus(teks, fase) {
           if (signal.aborted || !masihLayar(token)) return;

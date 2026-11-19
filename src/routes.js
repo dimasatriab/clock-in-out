@@ -3,7 +3,7 @@ import multer from 'multer';
 import { BUSINESSES } from './demo-data.js';
 import { assertNotLocked, clearLoginFailures, recordLoginFailure } from './lockout.js';
 import { parseCompanyName } from './settings.js';
-import { assessEnrollment, assessLiveness, bestFaceDistance, evidenceFrameIndex } from './biometrics.js';
+import { assessEnrollment, bestFaceDistance } from './biometrics.js';
 import { faceRuntime } from './face.js';
 import { isTooFlat, measureSharpness } from './sharpness.js';
 import { assertCooldown } from './settings.js';
@@ -246,7 +246,7 @@ function exportRows(records, employees = [], settings = {}) {
 }
 
 function validateFrames(files) {
-  if (!files || files.length !== 3) return { error: 'need_three_faces' };
+  if (!files || files.length < 1 || files.length > 3) return { error: 'need_face' };
   const hashes = new Set();
   for (const file of files) {
     const image = validateJpeg(file.buffer);
@@ -255,12 +255,6 @@ function validateFrames(files) {
     hashes.add(image.hash);
   }
   return { ok: true };
-}
-
-function asList(value) {
-  if (Array.isArray(value)) return value.map((item) => String(item));
-  if (value == null || value === '') return [];
-  return [String(value)];
 }
 
 async function readFaces(files, sharpnessMin = 0) {
@@ -277,8 +271,8 @@ async function readFaces(files, sharpnessMin = 0) {
   return { frames };
 }
 
-async function readEnrollment(files, poses, sharpnessMin) {
-  if (!files?.length || files.length !== poses.length) return { error: 'need_pose_set' };
+async function readEnrollment(files, sharpnessMin) {
+  if (!files?.length || files.length > 3) return { error: 'need_face' };
   const hashes = new Set();
   const frames = [];
   for (let index = 0; index < files.length; index += 1) {
@@ -293,7 +287,7 @@ async function readEnrollment(files, poses, sharpnessMin) {
     frames.push({
       ...face,
       sharpness: sharp.variance,
-      pose: poses[index],
+      pose: 'depan',
       buffer: files[index].buffer
     });
   }
@@ -415,9 +409,9 @@ export function registerRoutes(app) {
     const token = String(req.body?.token || '');
     if (!/^[a-f0-9]{64}$/.test(token)) return sendError(res, 'challenge');
     const checked = validateFrames(req.files);
-    if (checked.error) return sendError(res, checked.error === 'need_three_faces' ? 'liveness_failed' : checked.error);
+    if (checked.error) return sendError(res, checked.error);
     const samples = repo.faceSamples(dbOf(req), employee.id);
-    if (samples.length < 2) return sendError(res, 'face_not_enrolled');
+    if (samples.length < 1) return sendError(res, 'face_not_enrolled');
     const geofence = geofenceFor(req, employee, {
       lat: req.body.lat,
       lng: req.body.lng,
@@ -432,10 +426,8 @@ export function registerRoutes(app) {
     if (!consumed) return sendError(res, 'challenge');
 
     const read = await readFaces(req.files, settings.sharpnessMin);
-    if (read.error) return sendError(res, read.error === 'need_three_faces' ? 'liveness_failed' : read.error);
-    const liveness = assessLiveness(read.frames);
-    const evidenceIndex = liveness.ok ? evidenceFrameIndex(read.frames, liveness.method) : 0;
-    const faceDistance = bestFaceDistance(read.frames[evidenceIndex].descriptor, samples.map((sample) => sample.descriptor));
+    if (read.error) return sendError(res, read.error);
+    const faceDistance = bestFaceDistance(read.frames[0].descriptor, samples.map((sample) => sample.descriptor));
     const open = repo.openAttendance(dbOf(req), employee.id);
     const decision = evaluateClock({
       action: req.body.action,
@@ -445,7 +437,6 @@ export function registerRoutes(app) {
       geofence,
       faceDistance,
       maxFaceDistance: settings.faceDistanceThreshold,
-      liveness,
       shiftStart: employee.shiftStart,
       graceMinutes: employee.graceMinutes,
       now
@@ -461,7 +452,7 @@ export function registerRoutes(app) {
       employee,
       action: req.body.action,
       frames: read.frames,
-      evidenceIndex,
+      evidenceIndex: 0,
       faceDistance,
       decision,
       now
@@ -500,15 +491,12 @@ export function registerRoutes(app) {
     }
     if (!employee?.active) return sendError(res, 'inactive', 403);
     const checked = validateFrames(req.files);
-    if (checked.error) return sendError(res, checked.error === 'need_three_faces' ? 'liveness_failed' : checked.error);
+    if (checked.error) return sendError(res, checked.error);
     const samples = repo.faceSamples(dbOf(req), employee.id);
-    if (samples.length < 2) return sendError(res, 'face_not_enrolled');
+    if (samples.length < 1) return sendError(res, 'face_not_enrolled');
     const read = await readFaces(req.files, settings.sharpnessMin);
-    if (read.error) return sendError(res, read.error === 'need_three_faces' ? 'liveness_failed' : read.error);
-    const liveness = assessLiveness(read.frames);
-    if (!liveness.ok) return sendError(res, liveness.error || 'liveness_failed');
-    const evidenceIndex = evidenceFrameIndex(read.frames, liveness.method);
-    const faceDistance = bestFaceDistance(read.frames[evidenceIndex].descriptor, samples.map((sample) => sample.descriptor));
+    if (read.error) return sendError(res, read.error);
+    const faceDistance = bestFaceDistance(read.frames[0].descriptor, samples.map((sample) => sample.descriptor));
     if (!Number.isFinite(faceDistance) || faceDistance > settings.faceDistanceThreshold) {
       return sendError(res, 'face_mismatch', 400, { nama: employee.name });
     }
@@ -698,23 +686,27 @@ export function registerRoutes(app) {
     const employee = repo.getEmployee(dbOf(req), Number(req.params.id));
     if (!employee) return sendError(res, 'not_found', 404);
     const settings = repo.getSettings(dbOf(req), configOf(req));
-    const read = await readEnrollment(req.files, asList(req.body?.pose), settings.sharpnessMin);
+    const read = await readEnrollment(req.files, settings.sharpnessMin);
     if (read.error) return sendError(res, read.error);
-    const enrollment = assessEnrollment(read.frames, { maxFrames: settings.maxEnrollmentFrames });
+    const enrollment = assessEnrollment(read.frames);
     if (!enrollment.ok) return sendError(res, enrollment.error);
     const config = configOf(req);
     const paths = read.frames.map((frame) => saveJpeg(config, frame.buffer));
+    const kept = read.frames.reduce((best, frame, index) => (frame.sharpness > best.frame.sharpness ? { frame, index } : best), { frame: read.frames[0], index: 0 });
     try {
-      const replaced = repo.replaceFaceSamples(dbOf(req), employee.id, read.frames.map((frame, index) => ({
-        descriptor: frame.descriptor,
-        imagePath: paths[index],
-        pose: frame.pose,
-        score: frame.score,
-        sharpness: frame.sharpness,
-        yaw: frame.yaw,
-        pitch: frame.pitch
-      })));
+      const replaced = repo.replaceFaceSamples(dbOf(req), employee.id, [{
+        descriptor: enrollment.descriptor,
+        imagePath: paths[kept.index],
+        pose: 'depan',
+        score: kept.frame.score,
+        sharpness: kept.frame.sharpness,
+        yaw: kept.frame.yaw,
+        pitch: kept.frame.pitch
+      }]);
       for (const relative of replaced.oldPaths) removeUpload(config, relative);
+      for (let index = 0; index < paths.length; index += 1) {
+        if (index !== kept.index) removeUpload(config, paths[index]);
+      }
     } catch (error) {
       for (const relative of paths) removeUpload(config, relative);
       throw error;
@@ -878,7 +870,8 @@ function saveEmployeeFromBody(req, id) {
   if (pin && !isValidPin(pin)) return { error: 'pin_invalid' };
   const places = locationIds.map((locationId) => repo.getLocation(dbOf(req), locationId));
   if (places.some((location) => !location || location.scope === 'everywhere')) return { error: 'bad_request' };
-  if (!everywhere && !places.some((location) => location.active)) return { error: 'need_location' };
+  const active = body.active !== false && body.active !== 0 && body.active !== '0';
+  if (active && !everywhere && !places.some((location) => location.active)) return { error: 'need_location' };
   const existing = repo.getEmployeeByPhone(dbOf(req), phone);
   if (existing && existing.id !== id) return { error: 'phone_taken', status: 409 };
   const pinHash = pin ? hashSecret(pin) : null;
@@ -889,7 +882,7 @@ function saveEmployeeFromBody(req, id) {
     businessId,
     shiftStart: shift.shiftStart,
     graceMinutes: grace,
-    active: body.active !== false && body.active !== 0 && body.active !== '0',
+    active,
     everywhere,
     locationIds
   }, pinHash);

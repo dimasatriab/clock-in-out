@@ -32,12 +32,11 @@ test('absen masuk tepat waktu dan absen terlambat di WIB', () => {
 
 test('aturan menolak keadaan absen yang tidak sah', () => {
   assert.equal(evaluateClock(base({ employeeActive: false })).error, 'inactive');
-  assert.equal(evaluateClock(base({ faceSampleCount: 1 })).error, 'face_not_enrolled');
+  assert.equal(evaluateClock(base({ faceSampleCount: 0 })).error, 'face_not_enrolled');
   assert.equal(evaluateClock(base({ openAttendance: { id: 1 } })).error, 'already_in');
   assert.equal(evaluateClock(base({ action: 'out', openAttendance: null })).error, 'not_clocked_in');
   assert.equal(evaluateClock(base({ geofence: { ok: false, error: 'outside_geofence' } })).error, 'outside_geofence');
   assert.equal(evaluateClock(base({ geofence: { ok: false, error: 'gps_inaccurate', accuracy: 240 } })).error, 'gps_inaccurate');
-  assert.equal(evaluateClock(base({ liveness: { ok: false, error: 'liveness_failed' } })).error, 'liveness_failed');
   assert.equal(evaluateClock(base({ faceDistance: 0.5 })).ok, true);
   assert.equal(evaluateClock(base({ faceDistance: 0.5001 })).error, 'face_mismatch');
   assert.equal(evaluateClock(base({ faceDistance: Number.NaN })).error, 'face_mismatch');

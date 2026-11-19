@@ -180,6 +180,66 @@ function pickLiveness(samples) {
   return null;
 }
 
+export function watchFace(video, { signal, onBox, onStatus } = {}) {
+  return new Promise((resolve, reject) => {
+    let baikSejak = 0;
+    let stopped = false;
+    let stop = () => {};
+    const gagal = (error) => {
+      if (stopped) return;
+      stopped = true;
+      stop();
+      reject(error);
+    };
+    const selesai = async () => {
+      if (stopped) return;
+      stopped = true;
+      stop();
+      const blob = await snapshot(video);
+      if (!blob) {
+        stopped = false;
+        baikSejak = 0;
+        mulai();
+        return;
+      }
+      resolve({ frames: [{ blob }] });
+    };
+    const mulai = () => {
+      stop = watchPose(video, {
+        signal,
+        onFrame(pose) {
+          if (stopped) return;
+          if (!pose) {
+            baikSejak = 0;
+            onBox?.(null);
+            onStatus?.('Ready', 'ready');
+            return;
+          }
+          onBox?.(pose.box);
+          const jelas = (pose.score ?? 1) >= 0.45 && (pose.box?.width ?? 0) >= 80 && (pose.sharpness ?? 999) >= 50;
+          if (!jelas) {
+            baikSejak = 0;
+            onStatus?.('Dekatkan wajah ke lingkaran.', 'scanning');
+            return;
+          }
+          const now = performance.now();
+          if (!baikSejak) baikSejak = now;
+          onStatus?.('Wajah terlihat', 'scanning');
+          if (now - baikSejak >= 350) selesai();
+        }
+      });
+    };
+    if (signal?.aborted) {
+      gagal(Object.assign(new Error('Dibatalkan'), { name: 'AbortError' }));
+      return;
+    }
+    signal?.addEventListener('abort', () => {
+      gagal(Object.assign(new Error('Dibatalkan'), { name: 'AbortError' }));
+    }, { once: true });
+    mulai();
+  });
+}
+
 export function watchLiveness(video, { onStatus, onBox, signal, frameSkip = 1 }) {
   const faceapi = window.faceapi;
   const options = new faceapi.TinyFaceDetectorOptions(OPTIONS);

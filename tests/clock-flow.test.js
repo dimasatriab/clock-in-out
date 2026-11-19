@@ -130,21 +130,15 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
     assert.equal(queue.length, 3);
     queue.length = 0;
 
-    const poseNama = ['lurus', 'kiri', 'kanan', 'atas', 'bawah'];
-    const enrollShots = [4, 5, 6, 7, 8].map((seed, index) => ({
-      field: 'foto',
-      filename: `daftar-${index}.jpg`,
-      buffer: makeJpeg(seed)
-    }));
-    queue.push(face(0.3, 0, 0, 0), face(0.3, -0.22, 0, 0), face(0.3, 0.22, 0, 0), face(0.3, 0, 0, -0.12), face(0.3, 0, 0, 0.12));
+    queue.push(face(0.3, 0));
     const enrolled = await request(server, {
       method: 'POST',
       path: `/api/admin/karyawan/${nisa.id}/wajah`,
       cookie: adminCookie,
-      form: multipart({ pose: poseNama }, enrollShots)
+      form: multipart({}, [{ field: 'foto', filename: 'depan.jpg', buffer: makeJpeg(4) }])
     });
     assert.equal(enrolled.status, 200, JSON.stringify(enrolled.data));
-    assert.equal(enrolled.data.karyawan.faceSampleCount, 5);
+    assert.equal(enrolled.data.karyawan.faceSampleCount, 1);
 
     const inaccurate = await absen({
       ...baseFields,
@@ -159,9 +153,6 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
       lat: '-6.5'
     }, []);
     assert.equal(away.data.error, 'outside_geofence');
-
-    const flat = await absen({ ...baseFields, token: await token() }, [face(0.3, 0), face(0.3, 0.01), face(0.3, 0)]);
-    assert.equal(flat.data.error, 'liveness_failed');
 
     const mismatch = await absen({ ...baseFields, token: await token() }, [face(0.33, 0, 3), face(0.14, 0, 3), face(0.32, 0, 3)]);
     assert.equal(mismatch.data.error, 'face_mismatch');
@@ -186,7 +177,7 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
     assert.equal(clockIn.status, 200, JSON.stringify(clockIn.data));
     assert.equal(clockIn.data.absensi.lateMinutes, null);
     assert.equal(clockIn.data.absensi.locationId, toko.id);
-    assert.equal(clockIn.data.absensi.inLiveness, 'kedip');
+    assert.equal(clockIn.data.absensi.inLiveness, 'wajah');
     assert.ok(clockIn.data.absensi.inFaceDistance < 0.05);
 
     const again = await absen({ ...baseFields, token: await token() }, [face(0.34, 0), face(0.14, 0), face(0.33, 0)]);
@@ -199,7 +190,7 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
       token: await token()
     }, [face(0.3, -0.2), face(0.3, 0), face(0.3, 0.15)]);
     assert.equal(clockOut.status, 200, JSON.stringify(clockOut.data));
-    assert.equal(clockOut.data.absensi.outLiveness, 'geleng');
+    assert.equal(clockOut.data.absensi.outLiveness, 'wajah');
     assert.equal(typeof clockOut.data.absensi.hoursWorked, 'number');
 
     const closed = await absen({

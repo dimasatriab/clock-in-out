@@ -289,7 +289,7 @@ export function faceCatalog(db) {
     grouped.get(row.employee_id).push(JSON.parse(row.descriptor));
   }
   const catalog = [...grouped.entries()]
-    .filter(([, descriptors]) => descriptors.length >= 2)
+    .filter(([, descriptors]) => descriptors.length >= 1)
     .map(([id, descriptors]) => ({ id, descriptors }));
   catalogCache.set(db, { key, catalog });
   return catalog;
