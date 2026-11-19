@@ -500,29 +500,47 @@ dialog form, .dialog { padding: 18px; }
 dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
 
 @media (max-width: 860px) {
-  .admin { display: block; min-height: 100vh; padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
+  .admin { display: block; min-height: 100vh; padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
   .samping {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
     z-index: 1100;
-    padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
-    border-right: 0;
-    border-top: 0.5px solid var(--line);
-    background: rgba(249, 249, 249, 0.86);
+    padding: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.58);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    box-shadow:
+      0 10px 28px rgba(28, 28, 30, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  }
+  .samping::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.08) 46%, rgba(255, 255, 255, 0));
   }
   .samping strong, .samping .mini { display: none; }
-  .samping nav { flex-direction: row; margin: 0; gap: 0; }
+  .samping nav { position: relative; z-index: 1; flex-direction: row; margin: 0; gap: 0; }
   .samping nav button {
     flex: 1;
     text-align: center;
     font-size: 11px;
     padding: 10px 2px;
-    border-radius: 10px;
+    border-radius: 16px;
     color: var(--muted);
+    background: transparent;
   }
-  .samping nav button.aktif { background: transparent; color: var(--blue); }
+  .samping nav button.aktif {
+    background: rgba(255, 255, 255, 0.62);
+    color: var(--blue);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  }
   .bar-atas {
     position: sticky;
     top: 0;
