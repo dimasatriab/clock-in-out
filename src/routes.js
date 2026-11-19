@@ -381,16 +381,17 @@ export function registerRoutes(app) {
   app.get('/api/karyawan/cek-lokasi', (req, res) => {
     const employee = requireEmployee(req, res);
     if (!employee) return;
-    const result = matchGeofence(
-      { lat: req.query.lat, lng: req.query.lng, accuracy: req.query.akurasi },
-      repo.assignedLocations(dbOf(req), employee.id),
-      { maxAccuracyMeters: configOf(req).maxGpsAccuracy }
-    );
+    const result = geofenceFor(req, employee, {
+      lat: req.query.lat,
+      lng: req.query.lng,
+      accuracy: req.query.akurasi
+    });
     if (!result.ok) return sendError(res, result.error, 200, { accuracy: result.accuracy });
     sendOk(res, {
       lokasi: { id: result.locationId, nama: result.locationName },
-      jarakMeter: result.distanceMeters,
-      akurasi: result.accuracy
+      jarakMeter: result.everywhere ? null : result.distanceMeters,
+      akurasi: result.accuracy,
+      everywhere: Boolean(result.everywhere)
     });
   });
 
@@ -417,11 +418,11 @@ export function registerRoutes(app) {
     if (checked.error) return sendError(res, checked.error === 'need_three_faces' ? 'liveness_failed' : checked.error);
     const samples = repo.faceSamples(dbOf(req), employee.id);
     if (samples.length < 2) return sendError(res, 'face_not_enrolled');
-    const geofence = matchGeofence(
-      { lat: req.body.lat, lng: req.body.lng, accuracy: req.body.accuracy },
-      repo.assignedLocations(dbOf(req), employee.id),
-      { maxAccuracyMeters: configOf(req).maxGpsAccuracy }
-    );
+    const geofence = geofenceFor(req, employee, {
+      lat: req.body.lat,
+      lng: req.body.lng,
+      accuracy: req.body.accuracy
+    });
     if (!geofence.ok) return sendError(res, geofence.error, 400, { akurasi: geofence.accuracy });
     const now = new Date();
     const settings = repo.getSettings(dbOf(req), configOf(req));
@@ -514,11 +515,11 @@ export function registerRoutes(app) {
     const now = new Date();
     const cooled = assertCooldown(repo.lastPunchAt(dbOf(req), employee.id), now, settings.detectionCooldownSeconds);
     if (!cooled.ok) return sendError(res, 'cooldown', 429, { detik: cooled.remaining, nama: employee.name });
-    const geofence = matchGeofence(
-      { lat: req.body.lat, lng: req.body.lng, accuracy: req.body.accuracy },
-      repo.assignedLocations(dbOf(req), employee.id),
-      { maxAccuracyMeters: configOf(req).maxGpsAccuracy }
-    );
+    const geofence = geofenceFor(req, employee, {
+      lat: req.body.lat,
+      lng: req.body.lng,
+      accuracy: req.body.accuracy
+    });
     if (!geofence.ok) return sendError(res, geofence.error, 400, { nama: employee.name, akurasi: geofence.accuracy });
     const open = repo.openAttendance(dbOf(req), employee.id);
     const { token, tokenHash } = tokenPair();
@@ -759,7 +760,9 @@ export function registerRoutes(app) {
     if (!guardWrite(req, res)) return;
     if (!requireAdmin(req, res)) return;
     const id = Number(req.params.id);
-    if (!repo.getLocation(dbOf(req), id)) return sendError(res, 'not_found', 404);
+    const existing = repo.getLocation(dbOf(req), id);
+    if (!existing) return sendError(res, 'not_found', 404);
+    if (existing.scope === 'everywhere') return sendError(res, 'bad_request');
     const input = locationFromBody(req.body);
     if (input.error) return sendError(res, input.error);
     repo.saveLocation(dbOf(req), { ...input, id });
@@ -770,9 +773,11 @@ export function registerRoutes(app) {
     if (!guardWrite(req, res)) return;
     if (!requireAdmin(req, res)) return;
     const id = Number(req.params.id);
-    if (!repo.getLocation(dbOf(req), id)) return sendError(res, 'not_found', 404);
+    const existing = repo.getLocation(dbOf(req), id);
+    if (!existing) return sendError(res, 'not_found', 404);
+    if (existing.scope === 'everywhere') return sendError(res, 'bad_request');
     if (repo.locationUsage(dbOf(req), id) > 0) return sendError(res, 'location_in_use');
-    repo.deleteLocation(dbOf(req), id);
+    if (!repo.deleteLocation(dbOf(req), id)) return sendError(res, 'bad_request');
     sendOk(res, { pesan: 'Lokasi dihapus.' });
   });
 
@@ -864,14 +869,15 @@ function saveEmployeeFromBody(req, id) {
   const shift = parseShift(body.shiftStart);
   const grace = Number(body.graceMinutes ?? 0);
   const locationIds = Array.isArray(body.locationIds) ? [...new Set(body.locationIds.map(Number))] : [];
+  const everywhere = body.everywhere === true || body.everywhere === 1 || body.everywhere === '1';
   const pin = body.pin == null || body.pin === '' ? '' : String(body.pin);
   if (!name || !isValidPhone(phone) || !validBusiness(businessId) || !shift.ok) return { error: 'bad_request' };
   if (!Number.isInteger(grace) || grace < 0 || grace > 180) return { error: 'bad_request' };
   if (!id && !isValidPin(pin)) return { error: 'pin_invalid' };
   if (pin && !isValidPin(pin)) return { error: 'pin_invalid' };
-  if (!locationIds.length || locationIds.some((locationId) => !repo.getLocation(dbOf(req), locationId))) {
-    return { error: 'bad_request' };
-  }
+  const places = locationIds.map((locationId) => repo.getLocation(dbOf(req), locationId));
+  if (places.some((location) => !location || location.scope === 'everywhere')) return { error: 'bad_request' };
+  if (!everywhere && places.length === 0) return { error: 'bad_request' };
   const existing = repo.getEmployeeByPhone(dbOf(req), phone);
   if (existing && existing.id !== id) return { error: 'phone_taken', status: 409 };
   const pinHash = pin ? hashSecret(pin) : null;
@@ -883,12 +889,21 @@ function saveEmployeeFromBody(req, id) {
     shiftStart: shift.shiftStart,
     graceMinutes: grace,
     active: body.active !== false && body.active !== 0 && body.active !== '0',
+    everywhere,
     locationIds
   }, pinHash);
   if (pinHash && repo.getAdminByPhone(dbOf(req), phone)) {
     repo.updateAdminPin(dbOf(req), repo.getAdminByPhone(dbOf(req), phone).id, pinHash);
   }
   return { id: savedId };
+}
+
+function geofenceFor(req, employee, point) {
+  const everywhere = employee.everywhere ? repo.getEverywhereLocation(dbOf(req)) : null;
+  return matchGeofence(point, repo.assignedLocations(dbOf(req), employee.id), {
+    maxAccuracyMeters: configOf(req).maxGpsAccuracy,
+    everywhere
+  });
 }
 
 function grantAdminSession(req, res, phone, pin) {

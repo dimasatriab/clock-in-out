@@ -49,3 +49,21 @@ test('karyawan tanpa lokasi tidak bisa absen', () => {
   const match = matchGeofence({ lat: -6.2, lng: 106.8, accuracy: 5 }, [], { maxAccuracyMeters });
   assert.equal(match.error, 'no_location');
 });
+
+test('Everywhere melewati pagar tetapi menolak GPS yang tidak layak', () => {
+  const open = matchGeofence(
+    { lat: -6.9, lng: 107.6, accuracy: 12 },
+    [],
+    { maxAccuracyMeters, everywhere: { id: 9, businessId: 'toko' } }
+  );
+  assert.equal(open.ok, true);
+  assert.equal(open.everywhere, true);
+  assert.equal(open.locationName, 'Everywhere');
+  assert.equal(open.locationId, 9);
+  const weakOpen = matchGeofence(
+    { lat: -6.9, lng: 107.6, accuracy: 180 },
+    [],
+    { maxAccuracyMeters, everywhere: { id: 9, businessId: 'toko' } }
+  );
+  assert.equal(weakOpen.error, 'gps_inaccurate');
+});

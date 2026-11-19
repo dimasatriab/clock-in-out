@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS locations (
   longitude REAL NOT NULL,
   radius_meters REAL NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
+  scope TEXT NOT NULL DEFAULT 'place',
   created_at TEXT NOT NULL
 );
 
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS employees (
   shift_start TEXT,
   grace_minutes INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
+  everywhere INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 

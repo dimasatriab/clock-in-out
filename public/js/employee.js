@@ -56,6 +56,7 @@ function gambarMasuk() {
 function lokasiTeks(hasil, error) {
   if (error) return error.message;
   if (!hasil) return 'Lokasi belum dicek.';
+  if (hasil.everywhere) return `Everywhere. Akurasi ${Math.round(hasil.akurasi)} m.`;
   return `Di area ${hasil.lokasi.nama}. Jarak ke pusat ${hasil.jarakMeter} m, akurasi ${Math.round(hasil.akurasi)} m.`;
 }
 
@@ -107,7 +108,7 @@ async function tampilBeranda(pesanAwal) {
   layar.querySelector('#riwayat').innerHTML = riwayat.absensi.length
     ? riwayat.absensi.slice(0, 8).map((item) => `
       <div class="item">
-        <div><strong>${esc(tanggalPendek(item.clockInAt))}</strong><div class="mini">${esc(item.locationName)}</div></div>
+        <div><strong>${esc(tanggalPendek(item.clockInAt))}</strong><div class="mini">${item.everywhere ? `Everywhere · ${esc(item.inLat)}, ${esc(item.inLng)}` : esc(item.locationName)}</div></div>
         <div>${esc(jamPendek(item.clockInAt))}–${esc(jamPendek(item.clockOutAt))}<div class="mini">${esc(durasi(item.hoursWorked))}</div></div>
       </div>`).join('')
     : '<p class="mini">Belum ada absensi.</p>';

@@ -225,7 +225,7 @@ function gambarKaryawan() {
             <strong>${esc(orang.name)}</strong>
             ${orang.active ? '' : '<span class="chip bad">Nonaktif</span>'}
           </div>
-          <div class="mini">${esc(orang.phone)} · ${esc(orang.businessName)} · ${esc(orang.shiftStart || 'bebas')} · wajah ${orang.faceSampleCount}</div>
+          <div class="mini">${esc(orang.phone)} · ${esc(orang.businessName)} · ${esc(orang.shiftStart || 'bebas')}${orang.everywhere ? ' · Everywhere' : ''} · wajah ${orang.faceSampleCount}</div>
           <div class="karyawan-aksi">
             <button class="tombol-kedua" type="button" data-ubah="${orang.id}">Ubah</button>
             <button class="tombol" type="button" data-wajah="${orang.id}">Daftarkan wajah</button>
@@ -238,14 +238,17 @@ function opsiUsaha(selected) {
   return state.usaha.map((usaha) => `<option value="${esc(usaha.id)}" ${usaha.id === selected ? 'selected' : ''}>${esc(usaha.name)}</option>`).join('');
 }
 
-function opsiLokasi(selected) {
-  return `<div class="cek-daftar">${state.lokasi.map((lokasi) => `
+function opsiLokasi(orang) {
+  const selected = orang.locationIds || [];
+  return `<div class="cek-daftar">
+    <label class="cek"><input type="checkbox" name="everywhere" ${orang.everywhere ? 'checked' : ''}> Everywhere</label>
+    <p class="mini">Boleh absen dari mana saja. Koordinat dan akurasi GPS tetap dicatat.</p>
+    ${state.lokasi.map((lokasi) => `
     <label class="cek"><input type="checkbox" name="locationIds" value="${lokasi.id}" ${selected.includes(lokasi.id) ? 'checked' : ''}> ${esc(lokasi.name)}</label>
   `).join('')}</div>`;
 }
 
 function formKaryawan(orang = {}) {
-  const lokasi = orang.locationIds || [];
   return `
     <form data-karyawan="${orang.id || ''}">
       <label>Nama</label><input name="name" required value="${esc(orang.name || '')}">
@@ -255,7 +258,7 @@ function formKaryawan(orang = {}) {
       <label>Usaha</label><select name="businessId">${opsiUsaha(orang.businessId || 'toko')}</select>
       <label>Jam masuk (opsional)</label><input name="shiftStart" type="time" value="${esc(orang.shiftStart || '')}">
       <label>Toleransi terlambat (menit)</label><input name="graceMinutes" type="number" min="0" max="180" value="${esc(orang.graceMinutes ?? 10)}">
-      <label>Lokasi yang diizinkan</label>${opsiLokasi(lokasi)}
+      <label>Lokasi yang diizinkan</label>${opsiLokasi(orang)}
       <label class="cek"><input type="checkbox" name="active" ${orang.active === false ? '' : 'checked'}> Akun aktif</label>
       <button class="tombol" style="margin-top:12px" type="submit">Simpan</button>
     </form>`;
@@ -318,6 +321,11 @@ function filterForm() {
     </form>`;
 }
 
+function barisLokasi(item) {
+  if (item.everywhere) return `Everywhere · ${item.inLat}, ${item.inLng} · akurasi ${item.inAccuracy} m`;
+  return item.locationName;
+}
+
 function gambarRiwayat() {
   return `
     <h1 style="margin-top:0">Riwayat</h1>
@@ -329,10 +337,10 @@ function gambarRiwayat() {
           <div class="item" style="border:0;padding:0">
             <div>
               <strong>${esc(item.employeeName)}</strong>
-              <div class="mini">${esc(tanggalPendek(item.clockInAt))} · ${esc(item.locationName)}</div>
+              <div class="mini">${esc(tanggalPendek(item.clockInAt))} · ${esc(barisLokasi(item))}</div>
               <div class="mini">${esc(jamPendek(item.clockInAt))}–${esc(jamPendek(item.clockOutAt))} · ${esc(durasi(item.hoursWorked))}</div>
               <div class="mini">${item.lateMinutes > 0 ? `Terlambat ${item.lateMinutes} menit` : 'Tidak terlambat / tanpa jadwal'}</div>
-              <div class="mini">GPS ${item.inLat}, ${item.inLng} · akurasi ${item.inAccuracy} m</div>
+              ${item.everywhere ? '' : `<div class="mini">GPS ${item.inLat}, ${item.inLng} · akurasi ${item.inAccuracy} m</div>`}
             </div>
             <img class="foto" alt="Swafoto masuk ${esc(item.employeeName)}" src="/api/foto/absensi/${item.id}/masuk">
           </div>
@@ -435,6 +443,7 @@ function pasangAksi(isi) {
         shiftStart: data.get('shiftStart'),
         graceMinutes: Number(data.get('graceMinutes')),
         locationIds: data.getAll('locationIds').map(Number),
+        everywhere: data.get('everywhere') === 'on',
         active: data.get('active') === 'on'
       };
       const id = form.dataset.karyawan;

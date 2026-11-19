@@ -10,7 +10,7 @@ export function haversineMeters(lat1, lon1, lat2, lon2) {
   return 2 * EARTH_RADIUS_M * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export function matchGeofence(point, locations, { maxAccuracyMeters }) {
+export function matchGeofence(point, locations, { maxAccuracyMeters, everywhere = null }) {
   const lat = Number(point?.lat);
   const lng = Number(point?.lng);
   const accuracy = Number(point?.accuracy);
@@ -22,6 +22,17 @@ export function matchGeofence(point, locations, { maxAccuracyMeters }) {
   }
   if (accuracy > maxAccuracyMeters) {
     return { ok: false, error: 'gps_inaccurate', accuracy };
+  }
+  if (everywhere) {
+    return {
+      ok: true,
+      locationId: everywhere.id,
+      locationName: 'Everywhere',
+      businessId: everywhere.businessId,
+      distanceMeters: 0,
+      accuracy,
+      everywhere: true
+    };
   }
   if (!locations?.length) return { ok: false, error: 'no_location' };
 

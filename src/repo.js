@@ -8,6 +8,7 @@ import { arrivalFlag, jakartaDateLabel, jakartaDayRange, rangeFromLabels, staleC
 export function seedIfEmpty(db, config) {
   const insertBusiness = db.prepare('INSERT OR IGNORE INTO businesses (id, name) VALUES (?, ?)');
   for (const business of BUSINESSES) insertBusiness.run(business.id, business.name);
+  ensureEverywhereLocation(db);
 
   const adminCount = db.prepare('SELECT COUNT(*) AS n FROM admins').get().n;
   const now = new Date().toISOString();
@@ -103,7 +104,8 @@ function mapLocation(row) {
     latitude: row.latitude,
     longitude: row.longitude,
     radiusMeters: row.radius_meters,
-    active: row.active === 1
+    active: row.active === 1,
+    scope: row.scope || 'place'
   };
 }
 
@@ -117,6 +119,7 @@ function mapEmployee(row, locationIds = []) {
     shiftStart: row.shift_start,
     graceMinutes: row.grace_minutes,
     active: row.active === 1,
+    everywhere: row.everywhere === 1,
     locationIds,
     faceSampleCount: row.face_sample_count ?? 0
   };
@@ -148,7 +151,11 @@ export function getEmployee(db, id) {
     FROM employees e WHERE e.id = ?
   `).get(id);
   if (!row) return null;
-  const locationIds = db.prepare('SELECT location_id FROM employee_locations WHERE employee_id = ?').all(id).map((item) => item.location_id);
+  const locationIds = db.prepare(`
+    SELECT el.location_id FROM employee_locations el
+    JOIN locations l ON l.id = el.location_id
+    WHERE el.employee_id = ? AND l.scope = 'place'
+  `).all(id).map((item) => item.location_id);
   return mapEmployee(row, locationIds);
 }
 
@@ -157,7 +164,11 @@ export function listEmployees(db) {
     SELECT e.*, (SELECT COUNT(*) FROM face_samples f WHERE f.employee_id = e.id) AS face_sample_count
     FROM employees e ORDER BY e.active DESC, e.name
   `).all();
-  const links = db.prepare('SELECT employee_id, location_id FROM employee_locations').all();
+  const links = db.prepare(`
+    SELECT el.employee_id, el.location_id FROM employee_locations el
+    JOIN locations l ON l.id = el.location_id
+    WHERE l.scope = 'place'
+  `).all();
   return rows.map((row) => mapEmployee(row, links.filter((link) => link.employee_id === row.id).map((link) => link.location_id)));
 }
 
@@ -169,22 +180,22 @@ export function saveEmployee(db, input, pinHash) {
       if (pinHash) {
         db.prepare(`
           UPDATE employees
-          SET name = ?, phone = ?, pin_hash = ?, business_id = ?, shift_start = ?, grace_minutes = ?, active = ?
+          SET name = ?, phone = ?, pin_hash = ?, business_id = ?, shift_start = ?, grace_minutes = ?, active = ?, everywhere = ?
           WHERE id = ?
-        `).run(input.name, input.phone, pinHash, input.businessId, input.shiftStart, input.graceMinutes, input.active ? 1 : 0, id);
+        `).run(input.name, input.phone, pinHash, input.businessId, input.shiftStart, input.graceMinutes, input.active ? 1 : 0, input.everywhere ? 1 : 0, id);
       } else {
         db.prepare(`
           UPDATE employees
-          SET name = ?, phone = ?, business_id = ?, shift_start = ?, grace_minutes = ?, active = ?
+          SET name = ?, phone = ?, business_id = ?, shift_start = ?, grace_minutes = ?, active = ?, everywhere = ?
           WHERE id = ?
-        `).run(input.name, input.phone, input.businessId, input.shiftStart, input.graceMinutes, input.active ? 1 : 0, id);
+        `).run(input.name, input.phone, input.businessId, input.shiftStart, input.graceMinutes, input.active ? 1 : 0, input.everywhere ? 1 : 0, id);
       }
       db.prepare('DELETE FROM employee_locations WHERE employee_id = ?').run(id);
     } else {
       const result = db.prepare(`
-        INSERT INTO employees (name, phone, pin_hash, business_id, shift_start, grace_minutes, active, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(input.name, input.phone, pinHash, input.businessId, input.shiftStart, input.graceMinutes, input.active ? 1 : 0, now);
+        INSERT INTO employees (name, phone, pin_hash, business_id, shift_start, grace_minutes, active, everywhere, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(input.name, input.phone, pinHash, input.businessId, input.shiftStart, input.graceMinutes, input.active ? 1 : 0, input.everywhere ? 1 : 0, now);
       id = Number(result.lastInsertRowid);
     }
     const link = db.prepare('INSERT INTO employee_locations (employee_id, location_id) VALUES (?, ?)');
@@ -195,16 +206,31 @@ export function saveEmployee(db, input, pinHash) {
 
 export function listLocations(db, { activeOnly = false } = {}) {
   const sql = activeOnly
-    ? 'SELECT * FROM locations WHERE active = 1 ORDER BY name'
-    : 'SELECT * FROM locations ORDER BY active DESC, name';
+    ? "SELECT * FROM locations WHERE active = 1 AND scope = 'place' ORDER BY name"
+    : "SELECT * FROM locations WHERE scope = 'place' ORDER BY active DESC, name";
   return db.prepare(sql).all().map(mapLocation);
+}
+
+export function ensureEverywhereLocation(db) {
+  const existing = db.prepare("SELECT id FROM locations WHERE scope = 'everywhere'").get();
+  if (existing) return existing.id;
+  const now = new Date().toISOString();
+  const result = db.prepare(`
+    INSERT INTO locations (business_id, name, latitude, longitude, radius_meters, active, scope, created_at)
+    VALUES ('toko', 'Everywhere', 0, 0, 0, 1, 'everywhere', ?)
+  `).run(now);
+  return Number(result.lastInsertRowid);
+}
+
+export function getEverywhereLocation(db) {
+  return mapLocation(db.prepare("SELECT * FROM locations WHERE scope = 'everywhere' LIMIT 1").get());
 }
 
 export function assignedLocations(db, employeeId) {
   return db.prepare(`
     SELECT l.* FROM locations l
     JOIN employee_locations el ON el.location_id = l.id
-    WHERE el.employee_id = ? AND l.active = 1
+    WHERE el.employee_id = ? AND l.active = 1 AND l.scope = 'place'
   `).all(employeeId).map(mapLocation);
 }
 
@@ -234,10 +260,13 @@ export function locationUsage(db, id) {
 }
 
 export function deleteLocation(db, id) {
+  const row = db.prepare('SELECT scope FROM locations WHERE id = ?').get(id);
+  if (!row || row.scope === 'everywhere') return false;
   transaction(db, () => {
     db.prepare('DELETE FROM employee_locations WHERE location_id = ?').run(id);
     db.prepare('DELETE FROM locations WHERE id = ?').run(id);
   });
+  return true;
 }
 
 const catalogCache = new WeakMap();
@@ -398,10 +427,11 @@ export function completeClockOut(db, attendanceId, row) {
 
 function mapAttendance(db, row) {
   const employee = db.prepare('SELECT name, phone, business_id FROM employees WHERE id = ?').get(row.employee_id);
-  const location = db.prepare('SELECT name FROM locations WHERE id = ?').get(row.location_id);
+  const location = db.prepare('SELECT name, scope FROM locations WHERE id = ?').get(row.location_id);
   const outLocation = row.out_location_id
-    ? db.prepare('SELECT name FROM locations WHERE id = ?').get(row.out_location_id)
+    ? db.prepare('SELECT name, scope FROM locations WHERE id = ?').get(row.out_location_id)
     : null;
+  const everywhere = location?.scope === 'everywhere';
   return {
     id: row.id,
     employeeId: row.employee_id,
@@ -410,9 +440,10 @@ function mapAttendance(db, row) {
     businessId: employee?.business_id || '',
     businessName: businessName(employee?.business_id),
     locationId: row.location_id,
-    locationName: location?.name || '',
+    locationName: everywhere ? 'Everywhere' : (location?.name || ''),
+    everywhere,
     outLocationId: row.out_location_id,
-    outLocationName: outLocation?.name || '',
+    outLocationName: outLocation?.scope === 'everywhere' ? 'Everywhere' : (outLocation?.name || ''),
     clockInAt: row.clock_in_at,
     clockOutAt: row.clock_out_at,
     inLat: row.in_lat,

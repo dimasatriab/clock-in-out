@@ -38,10 +38,17 @@ export function migrateSqlite(db) {
   const done = new Set(db.prepare('SELECT id FROM schema_migrations').all().map((row) => row.id));
   const mark = db.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)');
   const now = new Date().toISOString();
-  const id = '004_settings_quality_auto_clockout';
-  if (done.has(id)) return;
-  for (const [table, column, definition] of ADDED_COLUMNS) addColumn(db, table, column, definition);
-  mark.run(id, now);
+  const settingsId = '004_settings_quality_auto_clockout';
+  if (!done.has(settingsId)) {
+    for (const [table, column, definition] of ADDED_COLUMNS) addColumn(db, table, column, definition);
+    mark.run(settingsId, now);
+  }
+  const everywhereId = '005_everywhere';
+  if (!done.has(everywhereId)) {
+    addColumn(db, 'employees', 'everywhere', 'INTEGER NOT NULL DEFAULT 0');
+    addColumn(db, 'locations', 'scope', "TEXT NOT NULL DEFAULT 'place'");
+    mark.run(everywhereId, now);
+  }
 }
 
 export const POSTGRES_SCHEMA = `
@@ -69,6 +76,7 @@ CREATE TABLE IF NOT EXISTS locations (
   longitude DOUBLE PRECISION NOT NULL,
   radius_meters DOUBLE PRECISION NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
+  scope TEXT NOT NULL DEFAULT 'place',
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS employees (
@@ -80,6 +88,7 @@ CREATE TABLE IF NOT EXISTS employees (
   shift_start TEXT,
   grace_minutes INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
+  everywhere INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS employee_locations (
@@ -158,6 +167,8 @@ ALTER TABLE face_samples ADD COLUMN IF NOT EXISTS sharpness DOUBLE PRECISION;
 ALTER TABLE face_samples ADD COLUMN IF NOT EXISTS yaw DOUBLE PRECISION;
 ALTER TABLE face_samples ADD COLUMN IF NOT EXISTS pitch DOUBLE PRECISION;
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS everywhere INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'place';
 CREATE TABLE IF NOT EXISTS login_attempts (
   key TEXT PRIMARY KEY,
   failures INTEGER NOT NULL,
