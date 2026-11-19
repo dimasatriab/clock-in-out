@@ -202,7 +202,7 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 .kamera {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: 1200;
   background: #000;
   color: white;
 }
@@ -227,6 +227,7 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.28);
   pointer-events: none;
 }
+.cincin.siap { border-color: #34c759; }
 .lembar {
   position: absolute;
   left: 12px;
@@ -239,6 +240,11 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   -webkit-backdrop-filter: saturate(180%) blur(24px);
 }
 .lembar p { margin: 0 0 12px; font-weight: 600; }
+.kamera .tombol, .kamera .tombol-kedua {
+  white-space: nowrap;
+  font-size: 15px;
+  min-height: 46px;
+}
 .kamera .tombol { background: var(--blue); }
 
 .depan {

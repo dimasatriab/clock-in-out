@@ -337,6 +337,47 @@ export function imageSharpness(source) {
   return sumSq / count - mean * mean;
 }
 
+export function watchPose(video, { signal, onFrame } = {}) {
+  const faceapi = window.faceapi;
+  const options = new faceapi.TinyFaceDetectorOptions(OPTIONS);
+  let stopped = false;
+  let busy = false;
+  const stop = () => { stopped = true; };
+  const loop = async () => {
+    if (stopped) return;
+    if (!busy && video.readyState >= 2) {
+      busy = true;
+      try {
+        const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks();
+        if (stopped) return;
+        if (!detection) {
+          onFrame?.(null);
+        } else {
+          const box = detection.detection.box;
+          onFrame?.({
+            score: detection.detection.score,
+            sharpness: imageSharpness(video),
+            box: { width: box.width, height: box.height },
+            ...metrics(detection.landmarks)
+          });
+        }
+      } catch {
+        if (!stopped) onFrame?.(null);
+      } finally {
+        busy = false;
+      }
+    }
+    if (!stopped) setTimeout(loop, 140);
+  };
+  const onAbort = () => stop();
+  signal?.addEventListener('abort', onAbort);
+  loop();
+  return () => {
+    stop();
+    signal?.removeEventListener('abort', onAbort);
+  };
+}
+
 export async function capturePose(video) {
   const faceapi = window.faceapi;
   const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions(OPTIONS)).withFaceLandmarks();

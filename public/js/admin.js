@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { capturePose, ensureModels, openCamera, stopStream } from './face-capture.js';
+import { capturePose, ensureModels, openCamera, stopStream, watchPose } from './face-capture.js';
 import { durasi, esc, hariIniLabel, jamPendek, tanggalPendek } from './format.js';
 
 const aplikasi = document.querySelector('#aplikasi');
@@ -635,6 +635,73 @@ function poseCukup(nama, pose) {
   return '';
 }
 
+const TUNGGU_POSE = 480;
+
+function tunggu(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function ambilPoseOtomatis(nama, petunjuk, index) {
+  const cincin = document.querySelector('.cincin');
+  const ambil = document.querySelector('#kamera-ambil');
+  const batal = document.querySelector('#kamera-batal');
+  return new Promise((resolve, reject) => {
+    let baikSejak = 0;
+    let selesai = false;
+    let mengambil = false;
+    const stop = watchPose(video, {
+      onFrame(pose) {
+        if (selesai || mengambil) return;
+        const alasan = pose ? poseCukup(nama, pose) : 'Arahkan wajah ke lingkaran.';
+        if (alasan) {
+          baikSejak = 0;
+          cincin.classList.remove('siap');
+          statusKamera.textContent = `${index}/${POSE_DAFTAR.length}. ${alasan}`;
+          return;
+        }
+        const now = performance.now();
+        if (!baikSejak) baikSejak = now;
+        cincin.classList.add('siap');
+        statusKamera.textContent = now - baikSejak >= TUNGGU_POSE
+          ? `${index}/${POSE_DAFTAR.length}. Mengambil…`
+          : `${index}/${POSE_DAFTAR.length}. ${petunjuk} Tahan sebentar…`;
+        if (now - baikSejak >= TUNGGU_POSE) simpan();
+      }
+    });
+    const bersih = () => {
+      stop();
+      ambil.removeEventListener('click', onAmbil);
+      batal.removeEventListener('click', onBatal);
+      cincin.classList.remove('siap');
+    };
+    const simpan = async () => {
+      if (selesai || mengambil) return;
+      mengambil = true;
+      const pose = await capturePose(video);
+      const alasan = pose ? poseCukup(nama, pose) : 'Arahkan wajah ke lingkaran.';
+      if (alasan) {
+        mengambil = false;
+        baikSejak = 0;
+        cincin.classList.remove('siap');
+        statusKamera.textContent = `${index}/${POSE_DAFTAR.length}. ${alasan}`;
+        return;
+      }
+      selesai = true;
+      bersih();
+      resolve({ ...pose, pose: nama });
+    };
+    const onAmbil = () => { simpan(); };
+    const onBatal = () => {
+      if (selesai) return;
+      selesai = true;
+      bersih();
+      reject(new Error('Dibatalkan'));
+    };
+    ambil.addEventListener('click', onAmbil);
+    batal.addEventListener('click', onBatal);
+  });
+}
+
 async function daftarWajah(id) {
   const orang = state.karyawan.find((item) => item.id === id);
   const shots = [];
@@ -646,26 +713,9 @@ async function daftarWajah(id) {
     for (let i = 0; i < POSE_DAFTAR.length; i += 1) {
       const [nama, petunjuk] = POSE_DAFTAR[i];
       statusKamera.textContent = `${i + 1}/${POSE_DAFTAR.length}. ${petunjuk}`;
-      const shot = await new Promise((resolve, reject) => {
-        const ambil = document.querySelector('#kamera-ambil');
-        const onAmbil = async () => {
-          const pose = await capturePose(video);
-          if (!pose) {
-            statusKamera.textContent = `${i + 1}/${POSE_DAFTAR.length}. ${petunjuk} Wajah belum terlihat.`;
-            return;
-          }
-          const alasan = poseCukup(nama, pose);
-          if (alasan) {
-            statusKamera.textContent = `${i + 1}/${POSE_DAFTAR.length}. ${alasan}`;
-            return;
-          }
-          ambil.removeEventListener('click', onAmbil);
-          resolve({ ...pose, pose: nama });
-        };
-        ambil.addEventListener('click', onAmbil);
-        document.querySelector('#kamera-batal').addEventListener('click', () => reject(new Error('Dibatalkan')), { once: true });
-      });
+      const shot = await ambilPoseOtomatis(nama, petunjuk, i + 1);
       shots.push(shot);
+      if (i < POSE_DAFTAR.length - 1) await tunggu(280);
     }
     statusKamera.textContent = 'Menyimpan wajah…';
     const form = new FormData();
