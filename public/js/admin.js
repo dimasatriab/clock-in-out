@@ -106,7 +106,6 @@ function kerangka() {
         </nav>
       </aside>
       <main class="isi">
-        <div class="bar-atas"><button id="keluar" type="button">Keluar</button></div>
         <div class="isi-dalam" id="isi"></div>
       </main>
     </div>`;
@@ -115,12 +114,6 @@ function kerangka() {
       state.bagian = button.dataset.bagian;
       await gambar();
     });
-  });
-  aplikasi.querySelector('#keluar').addEventListener('click', async () => {
-    clearInterval(timer);
-    await api('/api/admin/keluar', { method: 'POST', body: {} });
-    state.saya = null;
-    masuk();
   });
 }
 
