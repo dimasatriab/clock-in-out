@@ -281,12 +281,15 @@ function gambarLokasi() {
         <button class="tombol" type="submit">Simpan lokasi</button>
       </form>
     </article>
-    <div class="daftar">
+    <div class="karyawan-daftar">
       ${state.lokasi.map((lokasi) => `
-        <article class="kartu" style="margin:0">
-          <strong>${esc(lokasi.name)}</strong> ${lokasi.active ? '' : '<span class="chip bad">Nonaktif</span>'}
-          <div class="mini">${esc(lokasi.businessName)} · ${lokasi.latitude}, ${lokasi.longitude} · radius ${lokasi.radiusMeters} m</div>
-          <div class="baris" style="margin-top:8px">
+        <article class="karyawan-kartu">
+          <div class="jam-baris">
+            <strong>${esc(lokasi.name)}</strong>
+            <span>${esc(lokasi.radiusMeters)} m</span>
+          </div>
+          <div class="mini">${esc(lokasi.businessName)} · ${Number(lokasi.latitude).toFixed(5)}, ${Number(lokasi.longitude).toFixed(5)}${lokasi.active ? '' : ' · nonaktif'}</div>
+          <div class="karyawan-aksi">
             <button class="tombol-kedua" type="button" data-lokasi="${lokasi.id}">Isi formulir</button>
             <button class="tombol-bahaya" type="button" data-hapus-lokasi="${lokasi.id}">Hapus</button>
           </div>
