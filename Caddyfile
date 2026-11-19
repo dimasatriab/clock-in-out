@@ -1,0 +1,6 @@
+# Set DOMAIN di file .env ke nama domain yang sudah mengarah ke VPS.
+# Caddy meminta sertifikat HTTPS otomatis. Kamera dan GPS butuh HTTPS.
+{$DOMAIN:localhost} {
+	encode gzip
+	reverse_proxy app:3000
+}

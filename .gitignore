@@ -1,0 +1,11 @@
+node_modules/
+data/
+.env
+public/models/*
+!public/models/.gitkeep
+public/vendor/*
+!public/vendor/.gitkeep
+public/fonts/*
+!public/fonts/.gitkeep
+*.log
+.DS_Store
