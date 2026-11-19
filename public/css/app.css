@@ -289,13 +289,6 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 .titik.pindai { background: var(--warn); }
 .titik.gagal { background: var(--bad); }
 .depan-kaki { margin-top: 8px; }
-.pin-label {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.2;
-  color: #111;
-}
 .tombol-garis {
   width: 100%;
   min-height: 54px;
@@ -303,10 +296,13 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   border-radius: 2px;
   background: #fff;
   color: #111;
+  font-size: 15px;
+  font-weight: 400;
+  text-align: left;
+  padding: 0 14px;
 }
 .tombol-garis:active { background: #f3f3f3; }
 .tombol-garis:focus-visible { outline: 2px solid #111; outline-offset: 3px; }
-.depan.sedang-konfirmasi .pin-label,
 .depan.sedang-konfirmasi .tombol-garis { display: none; }
 .konfirmasi { display: flex; flex-direction: column; gap: 8px; }
 .konfirmasi[hidden] { display: none !important; }
