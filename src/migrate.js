@@ -49,6 +49,12 @@ export function migrateSqlite(db) {
     addColumn(db, 'locations', 'scope', "TEXT NOT NULL DEFAULT 'place'");
     mark.run(everywhereId, now);
   }
+  const deleteId = '006_soft_delete';
+  if (!done.has(deleteId)) {
+    addColumn(db, 'employees', 'deleted_at', 'TEXT');
+    addColumn(db, 'locations', 'deleted_at', 'TEXT');
+    mark.run(deleteId, now);
+  }
 }
 
 export const POSTGRES_SCHEMA = `
@@ -77,6 +83,7 @@ CREATE TABLE IF NOT EXISTS locations (
   radius_meters DOUBLE PRECISION NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
   scope TEXT NOT NULL DEFAULT 'place',
+  deleted_at TEXT,
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS employees (
@@ -89,6 +96,7 @@ CREATE TABLE IF NOT EXISTS employees (
   grace_minutes INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   everywhere INTEGER NOT NULL DEFAULT 0,
+  deleted_at TEXT,
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS employee_locations (
@@ -169,6 +177,8 @@ ALTER TABLE face_samples ADD COLUMN IF NOT EXISTS pitch DOUBLE PRECISION;
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS everywhere INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'place';
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS deleted_at TEXT;
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS deleted_at TEXT;
 CREATE TABLE IF NOT EXISTS login_attempts (
   key TEXT PRIMARY KEY,
   failures INTEGER NOT NULL,

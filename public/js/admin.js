@@ -12,6 +12,36 @@ let penanda;
 let lingkaran;
 let timer;
 
+function konfirmasiHapus(judul, teks) {
+  const dialog = document.querySelector('#konfirmasi-hapus');
+  dialog.querySelector('#hapus-judul').textContent = judul;
+  dialog.querySelector('#hapus-teks').textContent = teks;
+  if (dialog.open) dialog.close();
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'hapus'), { once: true });
+  });
+}
+
+async function hapusLokasi(id, nama) {
+  let teks = 'Penugasan karyawan dilepas. Absensi lama tetap memakai nama lokasi ini.';
+  try {
+    const dampak = await api(`/api/admin/lokasi/${id}/dampak`);
+    if (dampak.tanpaLokasi?.length) teks += ` ${dampak.tanpaLokasi.join(', ')} tidak akan punya lokasi kerja.`;
+    nama = dampak.nama || nama;
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
+  if (!await konfirmasiHapus(`Hapus ${nama}?`, teks)) return;
+  try {
+    await api(`/api/admin/lokasi/${id}`, { method: 'DELETE' });
+    await gambar();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
 const state = {
   saya: null,
   bagian: 'hari',
@@ -258,6 +288,7 @@ function formKaryawan(orang = {}) {
       <label class="cek"><input type="checkbox" name="active" ${orang.active === false ? '' : 'checked'}> Akun aktif</label>
       <p class="karyawan-pesan pesan buruk" hidden></p>
       <button class="tombol" style="margin-top:12px" type="submit">Simpan</button>
+      ${orang.id ? `<button class="tombol-hapus" type="button" data-hapus-karyawan="${orang.id}">Hapus</button>` : ''}
     </form>`;
 }
 
@@ -279,6 +310,7 @@ function gambarLokasi() {
         <div id="peta" class="peta"></div>
         <p class="mini">Ketuk peta untuk mengisi koordinat. Titik contoh di data awal bukan alamat sungguhan.</p>
         <button class="tombol" type="submit">Simpan lokasi</button>
+        <button class="tombol-hapus" id="hapus-lokasi-form" type="button" hidden>Hapus</button>
       </form>
     </article>
     <div class="karyawan-daftar">
@@ -480,6 +512,28 @@ function pasangAksi(isi) {
       }
     });
   });
+  isi.querySelectorAll('[data-hapus-karyawan]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const orang = state.karyawan.find((item) => item.id === Number(button.dataset.hapusKaryawan));
+      const ya = await konfirmasiHapus(
+        `Hapus ${orang?.name || 'karyawan ini'}?`,
+        'Wajah dan sesi login ikut terhapus. Riwayat absensi tetap tersimpan dan ditandai dihapus.'
+      );
+      if (!ya) return;
+      try {
+        await api(`/api/admin/karyawan/${button.dataset.hapusKaryawan}`, { method: 'DELETE' });
+        await gambar();
+      } catch (error) {
+        const pesan = button.form?.querySelector('.karyawan-pesan') || button.parentElement.querySelector('.karyawan-pesan');
+        if (pesan) {
+          pesan.hidden = false;
+          pesan.textContent = error.message;
+        } else {
+          alert(error.message);
+        }
+      }
+    });
+  });
   isi.querySelectorAll('[data-ubah]').forEach((button) => {
     button.addEventListener('click', () => {
       const orang = state.karyawan.find((item) => item.id === Number(button.dataset.ubah));
@@ -521,18 +575,23 @@ function pasangAksi(isi) {
       form.elements.longitude.value = lokasi.longitude;
       form.elements.radiusMeters.value = lokasi.radiusMeters;
       form.elements.active.checked = lokasi.active;
+      const hapus = isi.querySelector('#hapus-lokasi-form');
+      if (hapus) {
+        hapus.hidden = false;
+        hapus.dataset.id = String(lokasi.id);
+        hapus.dataset.nama = lokasi.name;
+      }
       gambarLingkaran();
     });
   });
+  isi.querySelector('#hapus-lokasi-form')?.addEventListener('click', () => {
+    const tombol = isi.querySelector('#hapus-lokasi-form');
+    hapusLokasi(tombol.dataset.id, tombol.dataset.nama);
+  });
   isi.querySelectorAll('[data-hapus-lokasi]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      if (!confirm('Hapus lokasi ini? Lokasi yang sudah punya absensi hanya bisa dinonaktifkan.')) return;
-      try {
-        await api(`/api/admin/lokasi/${button.dataset.hapusLokasi}`, { method: 'DELETE' });
-        await gambar();
-      } catch (error) {
-        alert(error.message);
-      }
+    button.addEventListener('click', () => {
+      const lokasi = state.lokasi.find((item) => item.id === Number(button.dataset.hapusLokasi));
+      hapusLokasi(button.dataset.hapusLokasi, lokasi?.name || '');
     });
   });
   isi.querySelectorAll('form[data-tutup]').forEach((form) => {

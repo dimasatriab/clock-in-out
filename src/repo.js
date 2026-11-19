@@ -154,7 +154,7 @@ export function getEmployee(db, id) {
   const locationIds = db.prepare(`
     SELECT el.location_id FROM employee_locations el
     JOIN locations l ON l.id = el.location_id
-    WHERE el.employee_id = ? AND l.scope = 'place'
+    WHERE el.employee_id = ? AND l.scope = 'place' AND l.deleted_at IS NULL
   `).all(id).map((item) => item.location_id);
   return mapEmployee(row, locationIds);
 }
@@ -162,12 +162,14 @@ export function getEmployee(db, id) {
 export function listEmployees(db) {
   const rows = db.prepare(`
     SELECT e.*, (SELECT COUNT(*) FROM face_samples f WHERE f.employee_id = e.id) AS face_sample_count
-    FROM employees e ORDER BY e.active DESC, e.name
+    FROM employees e
+    WHERE e.deleted_at IS NULL
+    ORDER BY e.active DESC, e.name
   `).all();
   const links = db.prepare(`
     SELECT el.employee_id, el.location_id FROM employee_locations el
     JOIN locations l ON l.id = el.location_id
-    WHERE l.scope = 'place'
+    WHERE l.scope = 'place' AND l.deleted_at IS NULL
   `).all();
   return rows.map((row) => mapEmployee(row, links.filter((link) => link.employee_id === row.id).map((link) => link.location_id)));
 }
@@ -206,8 +208,8 @@ export function saveEmployee(db, input, pinHash) {
 
 export function listLocations(db, { activeOnly = false } = {}) {
   const sql = activeOnly
-    ? "SELECT * FROM locations WHERE active = 1 AND scope = 'place' ORDER BY name"
-    : "SELECT * FROM locations WHERE scope = 'place' ORDER BY active DESC, name";
+    ? "SELECT * FROM locations WHERE active = 1 AND scope = 'place' AND deleted_at IS NULL ORDER BY name"
+    : "SELECT * FROM locations WHERE scope = 'place' AND deleted_at IS NULL ORDER BY active DESC, name";
   return db.prepare(sql).all().map(mapLocation);
 }
 
@@ -230,7 +232,7 @@ export function assignedLocations(db, employeeId) {
   return db.prepare(`
     SELECT l.* FROM locations l
     JOIN employee_locations el ON el.location_id = l.id
-    WHERE el.employee_id = ? AND l.active = 1 AND l.scope = 'place'
+    WHERE el.employee_id = ? AND l.active = 1 AND l.scope = 'place' AND l.deleted_at IS NULL
   `).all(employeeId).map(mapLocation);
 }
 
@@ -259,14 +261,45 @@ export function locationUsage(db, id) {
   return db.prepare('SELECT COUNT(*) AS n FROM attendance WHERE location_id = ? OR out_location_id = ?').get(id, id).n;
 }
 
+export function employeesLeftWithoutPlace(db, locationId) {
+  return db.prepare(`
+    SELECT e.name FROM employees e
+    JOIN employee_locations el ON el.employee_id = e.id AND el.location_id = ?
+    WHERE e.deleted_at IS NULL AND e.everywhere = 0
+      AND NOT EXISTS (
+        SELECT 1 FROM employee_locations other
+        JOIN locations l ON l.id = other.location_id
+        WHERE other.employee_id = e.id
+          AND other.location_id != ?
+          AND l.deleted_at IS NULL
+          AND l.scope = 'place'
+      )
+    ORDER BY e.name
+  `).all(locationId, locationId).map((row) => row.name);
+}
+
 export function deleteLocation(db, id) {
-  const row = db.prepare('SELECT scope FROM locations WHERE id = ?').get(id);
-  if (!row || row.scope === 'everywhere') return false;
+  const row = db.prepare('SELECT scope, deleted_at FROM locations WHERE id = ?').get(id);
+  if (!row || row.scope === 'everywhere' || row.deleted_at) return false;
+  const now = new Date().toISOString();
   transaction(db, () => {
     db.prepare('DELETE FROM employee_locations WHERE location_id = ?').run(id);
-    db.prepare('DELETE FROM locations WHERE id = ?').run(id);
+    db.prepare('UPDATE locations SET active = 0, deleted_at = ? WHERE id = ?').run(now, id);
   });
   return true;
+}
+
+export function deleteEmployee(db, id) {
+  const row = db.prepare('SELECT id, deleted_at FROM employees WHERE id = ?').get(id);
+  if (!row || row.deleted_at) return null;
+  const photos = db.prepare('SELECT image_path FROM face_samples WHERE employee_id = ?').all(id).map((item) => item.image_path);
+  const now = new Date().toISOString();
+  transaction(db, () => {
+    db.prepare('DELETE FROM face_samples WHERE employee_id = ?').run(id);
+    db.prepare("DELETE FROM sessions WHERE kind = 'employee' AND subject_id = ?").run(id);
+    db.prepare('UPDATE employees SET active = 0, deleted_at = ? WHERE id = ?').run(now, id);
+  });
+  return { photos };
 }
 
 const catalogCache = new WeakMap();
@@ -426,7 +459,7 @@ export function completeClockOut(db, attendanceId, row) {
 }
 
 function mapAttendance(db, row) {
-  const employee = db.prepare('SELECT name, phone, business_id FROM employees WHERE id = ?').get(row.employee_id);
+  const employee = db.prepare('SELECT name, phone, business_id, deleted_at FROM employees WHERE id = ?').get(row.employee_id);
   const location = db.prepare('SELECT name, scope FROM locations WHERE id = ?').get(row.location_id);
   const outLocation = row.out_location_id
     ? db.prepare('SELECT name, scope FROM locations WHERE id = ?').get(row.out_location_id)
@@ -435,7 +468,7 @@ function mapAttendance(db, row) {
   return {
     id: row.id,
     employeeId: row.employee_id,
-    employeeName: employee?.name || '',
+    employeeName: employee?.name ? `${employee.name}${employee.deleted_at ? ' (dihapus)' : ''}` : '',
     phone: employee?.phone || '',
     businessId: employee?.business_id || '',
     businessName: businessName(employee?.business_id),

@@ -761,6 +761,13 @@ export function registerRoutes(app) {
     sendOk(res, { lokasi: repo.getLocation(dbOf(req), id), pesan: 'Lokasi diperbarui.' });
   });
 
+  app.get('/api/admin/lokasi/:id/dampak', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const lokasi = repo.getLocation(dbOf(req), Number(req.params.id));
+    if (!lokasi || lokasi.scope === 'everywhere') return sendError(res, 'not_found', 404);
+    sendOk(res, { nama: lokasi.name, tanpaLokasi: repo.employeesLeftWithoutPlace(dbOf(req), lokasi.id) });
+  });
+
   app.delete('/api/admin/lokasi/:id', (req, res) => {
     if (!guardWrite(req, res)) return;
     if (!requireAdmin(req, res)) return;
@@ -768,9 +775,25 @@ export function registerRoutes(app) {
     const existing = repo.getLocation(dbOf(req), id);
     if (!existing) return sendError(res, 'not_found', 404);
     if (existing.scope === 'everywhere') return sendError(res, 'bad_request');
-    if (repo.locationUsage(dbOf(req), id) > 0) return sendError(res, 'location_in_use');
     if (!repo.deleteLocation(dbOf(req), id)) return sendError(res, 'bad_request');
-    sendOk(res, { pesan: 'Lokasi dihapus.' });
+    sendOk(res, { pesan: 'Lokasi dihapus. Absensi lama tetap memakai nama ini.' });
+  });
+
+  app.delete('/api/admin/karyawan/:id', (req, res) => {
+    if (!guardWrite(req, res)) return;
+    const admin = requireAdmin(req, res);
+    if (!admin) return;
+    const employee = repo.getEmployee(dbOf(req), Number(req.params.id));
+    if (!employee) return sendError(res, 'not_found', 404);
+    const linked = repo.getAdminByPhone(dbOf(req), employee.phone);
+    if (linked && linked.id === admin.id) return sendError(res, 'cannot_delete_self', 403);
+    if (linked && dbOf(req).prepare('SELECT COUNT(*) AS n FROM admins').get().n <= 1) {
+      return sendError(res, 'cannot_delete_last_admin', 403);
+    }
+    const removed = repo.deleteEmployee(dbOf(req), employee.id);
+    if (!removed) return sendError(res, 'not_found', 404);
+    for (const relative of removed.photos) removeUpload(configOf(req), relative);
+    sendOk(res, { pesan: 'Karyawan dihapus. Riwayat absensi tetap tersimpan.' });
   });
 
   app.post('/api/admin/absensi/:id/tutup', (req, res) => {

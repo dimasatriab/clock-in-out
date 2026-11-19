@@ -41,6 +41,8 @@ export const PESAN = {
   phone_invalid: 'Nomor HP harus diawali 08 dan berisi 10–14 angka.',
   need_location: 'Pilih Everywhere atau minimal satu lokasi yang aktif.',
   phone_taken: 'Nomor HP itu sudah dipakai karyawan lain.',
+  cannot_delete_self: 'Anda tidak bisa menghapus akun sendiri.',
+  cannot_delete_last_admin: 'Admin terakhir tidak bisa dihapus.',
   not_found: 'Data tidak ditemukan.',
   location_in_use: 'Lokasi masih dipakai data absensi. Nonaktifkan saja, jangan dihapus.',
   password_weak: 'Kata sandi admin minimal 8 karakter dan jangan memakai kata sandi percobaan.',

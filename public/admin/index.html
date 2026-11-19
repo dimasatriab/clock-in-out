@@ -14,6 +14,16 @@
 </head>
 <body>
   <div id="aplikasi"></div>
+  <dialog id="konfirmasi-hapus">
+    <form method="dialog">
+      <h2 id="hapus-judul"></h2>
+      <p id="hapus-teks"></p>
+      <div class="baris">
+        <button class="tombol-kedua" value="batal" type="submit">Batal</button>
+        <button class="tombol-hapus dialog-hapus" value="hapus" type="submit">Hapus</button>
+      </div>
+    </form>
+  </dialog>
   <div id="kamera" class="kamera" hidden>
     <video id="video" autoplay muted playsinline></video>
     <div class="cincin"></div>

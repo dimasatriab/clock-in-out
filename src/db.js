@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS locations (
   radius_meters REAL NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
   scope TEXT NOT NULL DEFAULT 'place',
+  deleted_at TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS employees (
   grace_minutes INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   everywhere INTEGER NOT NULL DEFAULT 0,
+  deleted_at TEXT,
   created_at TEXT NOT NULL
 );
 
