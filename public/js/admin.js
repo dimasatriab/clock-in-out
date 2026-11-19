@@ -108,16 +108,19 @@ function kelasBaris(orang) {
 }
 
 function gambarHari() {
+  if (state.saya?.perluGantiSandi || !state.hari) {
+    return `<h1 style="margin-top:0">Dasbor</h1>
+      <div class="peringatan"><strong>Ganti kata sandi awal sebelum memakai dasbor.</strong>
+        <form id="ganti" class="baris" style="margin-top:8px">
+          <input name="password" type="password" minlength="8" placeholder="Kata sandi baru" required>
+          <button class="tombol" type="submit">Ganti</button>
+        </form>
+        <p id="sandi-pesan" class="mini"></p>
+      </div>`;
+  }
   const ringkas = state.hari.ringkasan;
   const puncak = Math.max(1, ...(state.hari.minggu || []).map((hari) => hari.jumlah));
   return `
-    ${state.saya.perluGantiSandi ? `<div class="peringatan"><strong>Ganti kata sandi awal sebelum memakai dasbor.</strong>
-      <form id="ganti" class="baris" style="margin-top:8px">
-        <input name="password" type="password" minlength="8" placeholder="Kata sandi baru" required>
-        <button class="tombol" type="submit">Ganti</button>
-      </form>
-      <p id="sandi-pesan" class="mini"></p>
-    </div>` : ''}
     <h1 style="margin-top:0">Hari ini · ${esc(state.hari.tanggal)}</h1>
     <div class="statistik">
       ${[['Hadir', ringkas.hadir], ['Belum', ringkas.belum], ['Terlambat', ringkas.terlambat], ['Awal', ringkas.awal || 0]].map(([label, nilai]) => `
@@ -343,6 +346,7 @@ function queryFilter() {
 }
 
 async function muatBagian() {
+  if (state.saya?.perluGantiSandi) return;
   if (state.bagian === 'hari') state.hari = await api('/api/admin/hari-ini');
   if (state.bagian === 'karyawan' || state.bagian === 'lokasi' || state.bagian === 'riwayat' || state.bagian === 'rekap') {
     const data = await api('/api/admin/karyawan');

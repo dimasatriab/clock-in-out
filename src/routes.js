@@ -109,7 +109,7 @@ function requireAdmin(req, res) {
     sendError(res, 'unauthorized', 401);
     return null;
   }
-  const allowed = req.path === '/api/admin/sandi' || req.path === '/api/admin/keluar' || req.path === '/api/admin/saya';
+  const allowed = req.path === '/api/admin/sandi' || req.path === '/api/admin/keluar' || req.path === '/api/admin/saya' || req.path === '/api/usaha';
   if (admin.must_change_password === 1 && !allowed) {
     sendError(res, 'password_change_required', 403);
     return null;
