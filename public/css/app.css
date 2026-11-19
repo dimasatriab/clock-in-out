@@ -471,7 +471,15 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 .statistik { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .angka { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
 .foto { width: 54px; height: 54px; object-fit: cover; border-radius: 12px; background: #f2f2f7; }
-.peta { height: 280px; border-radius: 16px; margin-top: 8px; overflow: hidden; }
+.peta {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  height: 280px;
+  border-radius: 16px;
+  margin-top: 8px;
+  overflow: hidden;
+}
 .cek-daftar { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; }
 .cek { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-weight: 500; color: var(--ink); }
 .cek-daftar .cek { margin: 0; }
@@ -487,13 +495,13 @@ dialog form, .dialog { padding: 18px; }
 dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
 
 @media (max-width: 860px) {
-  .admin { display: block; min-height: 100vh; padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  .admin { display: block; min-height: 100vh; padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
   .samping {
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 40;
+    z-index: 1100;
     padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
     border-right: 0;
     border-top: 0.5px solid var(--line);
