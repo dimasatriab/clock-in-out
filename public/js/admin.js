@@ -356,7 +356,7 @@ function formKaryawan(orang = {}) {
       <label>Nama</label><input name="name" required value="${esc(orang.name || '')}">
       <label>Nomor HP</label><input name="phone" required value="${esc(orang.phone || '')}">
       <label>PIN ${orang.id ? '(kosongkan jika tidak diubah)' : ''}</label>
-      <input name="pin" inputmode="numeric" minlength="4" maxlength="6" ${orang.id ? '' : 'required'}>
+      <input name="pin" type="password" inputmode="numeric" minlength="4" maxlength="6" ${orang.id ? '' : 'required'}>
       <label>Usaha</label><select name="businessId">${opsiUsaha(orang.businessId || 'toko')}</select>
       <label>Jam masuk (opsional)</label><input name="shiftStart" type="time" value="${esc(orang.shiftStart || '')}">
       <label>Toleransi terlambat (menit)</label><input name="graceMinutes" type="number" min="0" max="180" value="${esc(orang.graceMinutes ?? 10)}">

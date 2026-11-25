@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { ensureModels, openCamera, stopStream, watchFace } from './face-capture.js';
 import { durasi, esc, jam, jamPendek, sapaan, tanggalPanjang, tanggalPendek } from './format.js';
+import { opsiAkurasiRendah, opsiAwalLokasi, pesanLokasi } from './lokasi.js';
 
 const layar = document.querySelector('#layar');
 const kamera = document.querySelector('#kamera');
@@ -32,7 +33,7 @@ function gambarMasuk() {
         <label for="telepon">Nomor HP</label>
         <input id="telepon" name="phone" inputmode="tel" autocomplete="username" placeholder="08xxxxxxxxxx" required>
         <label for="pin">PIN</label>
-        <input id="pin" name="pin" inputmode="numeric" autocomplete="current-password" minlength="4" maxlength="6" placeholder="4–6 angka" required>
+        <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" maxlength="6" placeholder="4–6 angka" required>
         <p id="galat" class="pesan buruk" hidden></p>
         <button class="tombol" style="margin-top:16px" type="submit">Masuk</button>
       </form>
@@ -60,15 +61,41 @@ function lokasiTeks(hasil, error) {
   return `Di area ${hasil.lokasi.nama}. Jarak ke pusat ${hasil.jarakMeter} m, akurasi ${Math.round(hasil.akurasi)} m.`;
 }
 
-async function posisi() {
-  if (!navigator.geolocation) throw new Error('Ponsel ini tidak menyediakan GPS.');
+function bacaTitik(opsi) {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-      () => reject(new Error('Izin lokasi ditolak atau GPS belum ketemu. Nyalakan lokasi, lalu coba lagi.')),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+      reject,
+      opsi
     );
   });
+}
+
+async function izinLokasi() {
+  try {
+    if (!navigator.permissions?.query) return 'prompt';
+    const status = await navigator.permissions.query({ name: 'geolocation' });
+    return status.state || 'prompt';
+  } catch {
+    return 'prompt';
+  }
+}
+
+async function posisi() {
+  if (!window.isSecureContext) throw new Error(pesanLokasi({ code: 1, message: 'Only secure origins are allowed' }, false));
+  if (!navigator.geolocation) throw new Error('Ponsel ini tidak menyediakan GPS.');
+  const izin = await izinLokasi();
+  if (izin === 'denied') throw new Error(pesanLokasi({ code: 1 }, true));
+  try {
+    return await bacaTitik(opsiAwalLokasi(izin));
+  } catch (error) {
+    if (error?.code !== 2 && error?.code !== 3) throw new Error(pesanLokasi(error, window.isSecureContext));
+    try {
+      return await bacaTitik(opsiAkurasiRendah);
+    } catch (ulang) {
+      throw new Error(pesanLokasi(ulang, window.isSecureContext));
+    }
+  }
 }
 
 async function tampilBeranda(pesanAwal) {
@@ -199,7 +226,6 @@ async function layarDepan() {
   clearInterval(tick);
   setStatus('Ready', 'ready');
   await periksaAdmin();
-  posisi().catch(() => {});
   const pengaturanAwal = await api('/api/kiosk/pengaturan').catch(() => null);
   const merek = pengaturanAwal?.companyName || 'DBLESSMYRA';
   const judul = document.querySelector('#merek');
@@ -227,7 +253,8 @@ async function pindai(signal, token, awal) {
   while (!signal.aborted && masihLayar(token)) {
     gambarKotak(null);
     setStatus('Ready', 'ready');
-    const titikJanji = posisi();
+    const izinAwal = await izinLokasi();
+    const titikJanji = izinAwal === 'granted' ? posisi() : null;
     let gerak;
     try {
       gerak = await watchFace(video, {
@@ -250,7 +277,16 @@ async function pindai(signal, token, awal) {
     setStatus('Mencocokkan wajah…', 'scanning');
     let titik;
     try {
-      titik = await titikJanji;
+      if (titikJanji) {
+        try {
+          titik = await titikJanji;
+        } catch {
+          if (signal.aborted || !masihLayar(token)) return;
+          titik = await posisi();
+        }
+      } else {
+        titik = await posisi();
+      }
     } catch (error) {
       if (signal.aborted || !masihLayar(token)) return;
       setStatus(error.message, 'error');
