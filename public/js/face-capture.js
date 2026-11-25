@@ -30,7 +30,9 @@ export function ensureModels(onStatus) {
     const hangat = document.createElement('canvas');
     hangat.width = 160;
     hangat.height = 160;
-    await faceapi.detectSingleFace(hangat, new faceapi.TinyFaceDetectorOptions(OPTIONS)).catch(() => {});
+    try {
+      await faceapi.detectSingleFace(hangat, new faceapi.TinyFaceDetectorOptions(OPTIONS));
+    } catch { /* pemanasan; gagal tidak boleh menutup kamera */ }
   })();
   return modelPromise;
 }

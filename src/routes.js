@@ -746,7 +746,7 @@ export function registerRoutes(app) {
     const full = resolveUpload(configOf(req), row.image_path);
     if (!full) return sendError(res, 'not_found', 404);
     res.setHeader('Content-Type', 'image/jpeg');
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Cache-Control', 'private, no-store');
     res.sendFile(full);
   });
 
@@ -927,7 +927,7 @@ export function registerRoutes(app) {
     const full = resolveUpload(configOf(req), relative);
     if (!full) return sendError(res, 'not_found', 404);
     res.setHeader('Content-Type', 'image/jpeg');
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Cache-Control', 'private, no-store');
     fs.createReadStream(full).pipe(res);
   });
 }
