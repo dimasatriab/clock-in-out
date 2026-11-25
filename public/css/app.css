@@ -411,6 +411,7 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 .tabel-bungkus { overflow-x: auto; margin-top: 12px; }
 .tabel { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tabel th, .tabel td { text-align: left; padding: 10px 8px; border-bottom: 0.5px solid var(--line); vertical-align: top; }
+.status-sel { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .baris-telat { background: #ffebe9; }
 .baris-awal { background: #e8f2ff; }
 .baris-hadir { background: #e9f9ee; }
@@ -607,6 +608,10 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
   .isi { padding: calc(8px + env(safe-area-inset-top)) 16px 24px; }
   .isi h1 { font-size: 28px; padding-right: 148px; }
   .statistik { grid-template-columns: 1fr 1fr; }
+  .tabel { font-size: 12px; }
+  .tabel th, .tabel td { padding: 8px 3px; }
+  .tabel .foto { width: 40px; height: 40px; }
+  .tabel .chip { font-size: 11px; padding: 2px 6px; white-space: nowrap; }
 }
 
 .isi h1.judul-hari {

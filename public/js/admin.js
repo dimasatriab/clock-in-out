@@ -243,7 +243,7 @@ function gambarHari() {
               <td>${esc(jamPendek(orang.record?.clockOutAt))}${orang.auto ? '<div class="mini">otomatis</div>' : ''}</td>
               <td>${esc(durasi(orang.jam || 0))}</td>
               <td>${orang.record ? `${fotoTombol(orang.record, 'masuk')}${fotoTombol(orang.record, 'pulang')}` : '—'}</td>
-              <td>${statusChip(orang)} ${orang.late ? '<span class="chip warn">Terlambat</span>' : ''} ${orang.early ? '<span class="chip">Awal</span>' : ''}</td>
+              <td class="status-sel">${statusChip(orang)}${orang.late ? '<span class="chip warn">Terlambat</span>' : ''}${orang.early ? '<span class="chip">Awal</span>' : ''}</td>
             </tr>`).join('')}
         </tbody>
       </table>
