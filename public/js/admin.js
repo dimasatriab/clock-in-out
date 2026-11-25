@@ -87,6 +87,8 @@ function kunciPush(base64) {
   return Uint8Array.from(raw, (char) => char.charCodeAt(0));
 }
 
+const IKON_LONCENG = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+
 function perbaruiLonceng() {
   const jumlah = document.querySelector('#lonceng-jumlah');
   if (!jumlah) return;
@@ -182,7 +184,7 @@ function kerangka() {
       </aside>
       <div class="sudut-admin">
         <button class="keluar-admin" id="keluar-admin" type="button">Keluar</button>
-        <button class="lonceng" id="lonceng" type="button">Lonceng <span id="lonceng-jumlah" ${state.belumBaca ? '' : 'hidden'}>${state.belumBaca}</span></button>
+        <button class="lonceng" id="lonceng" type="button" aria-label="Notifikasi">${IKON_LONCENG}<span id="lonceng-jumlah" ${state.belumBaca ? '' : 'hidden'}>${state.belumBaca}</span></button>
       </div>
       <div class="lonceng-panel" id="lonceng-panel" hidden></div>
       <main class="isi">

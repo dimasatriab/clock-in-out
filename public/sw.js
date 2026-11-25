@@ -1,4 +1,4 @@
-const CACHE = 'hadir-v5';
+const CACHE = 'hadir-v6';
 const SHELL = ['/', '/admin/', '/css/app.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
