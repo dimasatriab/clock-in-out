@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { ensureModels, openCamera, stopStream, watchFace } from './face-capture.js';
 import { durasi, esc, jam, jamPendek, sapaan, tanggalPanjang, tanggalPendek } from './format.js';
-import { opsiAkurasiRendah, opsiAwalLokasi, pesanLokasi } from './lokasi.js';
+import { ambilPosisi, pesanLokasi } from './lokasi.js';
 
 const layar = document.querySelector('#layar');
 const kamera = document.querySelector('#kamera');
@@ -9,12 +9,22 @@ const video = document.querySelector('#video');
 const tombolPin = document.querySelector('#kamera-pin');
 const tombolStatus = document.querySelector('#kamera-riwayat');
 const tombolAdmin = document.querySelector('#tautan-admin');
-const lampu = document.querySelector('#lampu');
 const teksStatus = document.querySelector('#kamera-status');
+const teksLokasi = document.querySelector('#lokasi-depan');
+const centangWajah = document.querySelector('#centang-wajah');
+const centangLokasi = document.querySelector('#centang-lokasi');
 let stream;
 let cameraAbort;
 let tick;
 let layarToken = 0;
+let lokasiUrut = 0;
+
+const KODE_LOKASI = new Set(['gps_invalid', 'gps_inaccurate', 'outside_geofence', 'no_location']);
+const KODE_WAJAH_GAGAL = new Set([
+  'face_mismatch', 'face_not_enrolled', 'no_face', 'face_unknown', 'need_face',
+  'multiple_faces', 'face_too_small', 'liveness_failed', 'not_frontal',
+  'ambiguous_face', 'face_quality', 'bad_image', 'perlu_faktor', 'different_person'
+]);
 
 function gambarMasuk() {
   layar.innerHTML = `
@@ -61,14 +71,10 @@ function lokasiTeks(hasil, error) {
   return `Di area ${hasil.lokasi.nama}. Jarak ke pusat ${hasil.jarakMeter} m, akurasi ${Math.round(hasil.akurasi)} m.`;
 }
 
-function bacaTitik(opsi) {
-  return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-      reject,
-      opsi
-    );
-  });
+function lokasiSingkat(hasil) {
+  if (!hasil) return 'Lokasi belum dicek.';
+  if (hasil.everywhere) return 'Everywhere';
+  return `Di area ${hasil.lokasi.nama}`;
 }
 
 async function izinLokasi() {
@@ -83,19 +89,7 @@ async function izinLokasi() {
 
 async function posisi() {
   if (!window.isSecureContext) throw new Error(pesanLokasi({ code: 1, message: 'Only secure origins are allowed' }, false));
-  if (!navigator.geolocation) throw new Error('Ponsel ini tidak menyediakan GPS.');
-  const izin = await izinLokasi();
-  if (izin === 'denied') throw new Error(pesanLokasi({ code: 1 }, true));
-  try {
-    return await bacaTitik(opsiAwalLokasi(izin));
-  } catch (error) {
-    if (error?.code !== 2 && error?.code !== 3) throw new Error(pesanLokasi(error, window.isSecureContext));
-    try {
-      return await bacaTitik(opsiAkurasiRendah);
-    } catch (ulang) {
-      throw new Error(pesanLokasi(ulang, window.isSecureContext));
-    }
-  }
+  return ambilPosisi(navigator);
 }
 
 async function tampilBeranda(pesanAwal) {
@@ -172,10 +166,80 @@ function masihLayar(token) {
   return token === layarToken;
 }
 
-function setStatus(teks, fase) {
+function setCentang(el, keadaan, labelOk, labelTunggu) {
+  if (!el) return;
+  const ok = keadaan === 'ok';
+  el.dataset.keadaan = ok ? 'ok' : 'tunggu';
+  el.setAttribute('aria-label', ok ? labelOk : labelTunggu);
+}
+
+function setWajah(teks, keadaan) {
   if (teksStatus) teksStatus.textContent = teks;
-  const kelas = { ready: 'siap', scanning: 'pindai', error: 'gagal', success: 'berhasil' }[fase] || 'siap';
-  if (lampu) lampu.className = `titik ${kelas}`;
+  setCentang(centangWajah, keadaan, 'Wajah oke', 'Wajah menunggu');
+}
+
+function setLokasi(teks, keadaan) {
+  if (teksLokasi) teksLokasi.textContent = teks;
+  setCentang(centangLokasi, keadaan, 'Lokasi oke', 'Lokasi menunggu');
+}
+
+function tampilLokasi(teks, keadaan, urut) {
+  if (urut !== lokasiUrut) return;
+  setLokasi(teks, keadaan);
+}
+
+async function nilaiLokasi(titik, signal, token, urut) {
+  try {
+    const hasil = await api(`/api/karyawan/cek-lokasi?lat=${titik.lat}&lng=${titik.lng}&akurasi=${titik.accuracy}`);
+    if (signal?.aborted || !masihLayar(token)) return hasil;
+    tampilLokasi(lokasiSingkat(hasil), 'ok', urut);
+    return hasil;
+  } catch (error) {
+    if (signal?.aborted || !masihLayar(token)) return null;
+    tampilLokasi(error.message, 'tunggu', urut);
+    return null;
+  }
+}
+
+async function pantauLokasi(signal, token) {
+  const urut = ++lokasiUrut;
+  tampilLokasi('Mengecek lokasi…', 'tunggu', urut);
+  try {
+    const titik = await posisi();
+    if (signal.aborted || !masihLayar(token) || urut !== lokasiUrut) return;
+    await nilaiLokasi(titik, signal, token, urut);
+  } catch (error) {
+    if (signal.aborted || !masihLayar(token) || urut !== lokasiUrut) return;
+    tampilLokasi(error.message, 'tunggu', urut);
+  }
+}
+
+function gagalKenali(error) {
+  if (KODE_LOKASI.has(error.code)) {
+    setWajah('Wajah cocok', 'ok');
+    const urut = ++lokasiUrut;
+    tampilLokasi(error.message, 'tunggu', urut);
+    return;
+  }
+  if (error.code === 'cooldown') {
+    setWajah(error.message, 'ok');
+    return;
+  }
+  setWajah(error.message, 'tunggu');
+}
+
+function gagalAbsen(error) {
+  if (KODE_LOKASI.has(error.code)) {
+    setWajah('Wajah cocok', 'ok');
+    const urut = ++lokasiUrut;
+    tampilLokasi(error.message, 'tunggu', urut);
+    return;
+  }
+  if (KODE_WAJAH_GAGAL.has(error.code)) {
+    setWajah(error.message, 'tunggu');
+    return;
+  }
+  setWajah(error.message, 'ok');
 }
 
 function tunggu(ms, signal) {
@@ -224,8 +288,9 @@ async function layarDepan() {
   layar.innerHTML = '';
   kamera.hidden = false;
   clearInterval(tick);
-  setStatus('Ready', 'ready');
+  setWajah('Menunggu wajah', 'tunggu');
   await periksaAdmin();
+  pantauLokasi(signal, token);
   const pengaturanAwal = await api('/api/kiosk/pengaturan').catch(() => null);
   const merek = pengaturanAwal?.companyName || 'DBLESSMYRA';
   const judul = document.querySelector('#merek');
@@ -233,16 +298,16 @@ async function layarDepan() {
   document.title = `${merek} — Attendance`;
   try {
     await ensureModels((teks) => {
-      if (masihLayar(token) && !signal.aborted) setStatus(teks, 'scanning');
+      if (masihLayar(token) && !signal.aborted) setWajah(teks, 'tunggu');
     });
     if (!masihLayar(token) || signal.aborted) return;
     if (!stream) stream = await openCamera(video);
     if (!masihLayar(token) || signal.aborted) return;
-    setStatus('Ready', 'ready');
+    setWajah('Menunggu wajah', 'tunggu');
     await pindai(signal, token, pengaturanAwal);
   } catch (error) {
     if (!masihLayar(token) || signal.aborted || error.name === 'AbortError') return;
-    setStatus(error.message || 'Kamera depan tidak siap.', 'error');
+    setWajah(error.message || 'Kamera depan tidak siap.', 'tunggu');
   }
 }
 
@@ -252,7 +317,7 @@ async function pindai(signal, token, awal) {
   }));
   while (!signal.aborted && masihLayar(token)) {
     gambarKotak(null);
-    setStatus('Ready', 'ready');
+    setWajah('Menunggu wajah', 'tunggu');
     const izinAwal = await izinLokasi();
     const titikJanji = izinAwal === 'granted' ? posisi() : null;
     let gerak;
@@ -262,19 +327,19 @@ async function pindai(signal, token, awal) {
         onBox: gambarKotak,
         onStatus(teks, fase) {
           if (signal.aborted || !masihLayar(token)) return;
-          if (fase === 'ready') setStatus('Ready', 'ready');
-          else setStatus(teks, 'scanning');
+          if (fase === 'ready') setWajah('Menunggu wajah', 'tunggu');
+          else setWajah(teks, 'ok');
         }
       });
     } catch (error) {
       if (signal.aborted || error.name === 'AbortError' || !masihLayar(token)) return;
-      setStatus(error.message, 'error');
+      setWajah(error.message, 'tunggu');
       await tunggu(1800, signal);
       continue;
     }
     if (signal.aborted || !masihLayar(token)) return;
     gambarKotak(null);
-    setStatus('Mencocokkan wajah…', 'scanning');
+    setWajah('Mencocokkan wajah…', 'ok');
     let titik;
     try {
       if (titikJanji) {
@@ -289,10 +354,15 @@ async function pindai(signal, token, awal) {
       }
     } catch (error) {
       if (signal.aborted || !masihLayar(token)) return;
-      setStatus(error.message, 'error');
+      const urut = ++lokasiUrut;
+      tampilLokasi(error.message, 'tunggu', urut);
+      setWajah('Wajah terlihat', 'ok');
       await tunggu(1800, signal);
       continue;
     }
+    if (signal.aborted || !masihLayar(token)) return;
+    const urutLokasi = ++lokasiUrut;
+    await nilaiLokasi(titik, signal, token, urutLokasi);
     if (signal.aborted || !masihLayar(token)) return;
     const form = new FormData();
     form.set('lat', String(titik.lat));
@@ -304,15 +374,20 @@ async function pindai(signal, token, awal) {
       kenali = await api('/api/karyawan/kenali', { method: 'POST', form });
     } catch (error) {
       if (signal.aborted || !masihLayar(token)) return;
-      setStatus(error.message, 'error');
+      gagalKenali(error);
       await tunggu(1800, signal);
       continue;
     }
     if (signal.aborted || !masihLayar(token)) return;
+    setWajah('Wajah cocok', 'ok');
+    if (centangLokasi?.dataset.keadaan !== 'ok') {
+      const urut = ++lokasiUrut;
+      tampilLokasi('Lokasi diterima', 'ok', urut);
+    }
     const aksi = kenali.sesiTerbuka ? 'out' : 'in';
     form.set('action', aksi);
     form.set('token', kenali.token);
-    setStatus(aksi === 'out' ? 'Mencatat clock out…' : 'Mencatat clock in…', 'scanning');
+    setWajah(aksi === 'out' ? 'Mencatat clock out…' : 'Mencatat clock in…', 'ok');
     try {
       const hasil = await api('/api/karyawan/absen', { method: 'POST', form });
       if (signal.aborted || !masihLayar(token)) return;
@@ -327,7 +402,7 @@ async function pindai(signal, token, awal) {
       return;
     } catch (error) {
       if (signal.aborted || !masihLayar(token)) return;
-      setStatus(error.message, 'error');
+      gagalAbsen(error);
       await tunggu(1800, signal);
     }
   }

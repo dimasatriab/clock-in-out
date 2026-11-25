@@ -28,10 +28,16 @@
         </div>
       </header>
       <div class="depan-lembar">
-        <p class="depan-status">
-          <span id="lampu" class="titik siap"></span>
-          <span id="kamera-status">Ready</span>
-        </p>
+        <div class="depan-baris">
+          <span id="centang-wajah" class="centang" data-keadaan="tunggu" role="img" aria-label="Wajah menunggu"></span>
+          <span class="depan-nama">Wajah</span>
+          <span id="kamera-status" class="depan-detail">Menunggu wajah</span>
+        </div>
+        <div class="depan-baris">
+          <span id="centang-lokasi" class="centang" data-keadaan="tunggu" role="img" aria-label="Lokasi menunggu"></span>
+          <span class="depan-nama">Lokasi</span>
+          <span id="lokasi-depan" class="depan-detail">Mengecek lokasi…</span>
+        </div>
         <button class="tombol-garis" id="kamera-pin" type="button">login with pin</button>
       </div>
     </div>
