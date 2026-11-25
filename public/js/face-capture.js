@@ -115,23 +115,57 @@ export function stopStream(stream) {
   stream?.getTracks().forEach((track) => track.stop());
 }
 
+export function visibleFaceCrop(videoWidth, videoHeight, viewWidth, viewHeight) {
+  const vw = Number(videoWidth);
+  const vh = Number(videoHeight);
+  if (!(vw > 0) || !(vh > 0)) return null;
+  const ew = Number(viewWidth);
+  const eh = Number(viewHeight);
+  let x;
+  let y;
+  let width;
+  let height;
+  if (ew >= 2 && eh >= 2) {
+    const scale = Math.max(ew / vw, eh / vh);
+    width = ew / scale;
+    height = eh / scale;
+    x = (vw - width) / 2;
+    y = (vh - height) / 2;
+  } else {
+    const side = Math.min(vw, vh);
+    x = (vw - side) / 2;
+    y = (vh - side) / 2;
+    width = side;
+    height = side;
+  }
+  x = Math.max(0, x);
+  y = Math.max(0, y);
+  width = Math.min(width, vw - x);
+  height = Math.min(height, vh - y);
+  if (width < 1 || height < 1) return null;
+  return { x, y, width, height };
+}
+
+function jpegSize(width, height) {
+  const scale = 640 / Math.max(width, height);
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale))
+  };
+}
+
 export function snapshot(video) {
-  if (!video.videoWidth) return Promise.resolve(null);
+  if (!video.videoWidth || !video.videoHeight) return Promise.resolve(null);
+  const box = video.getBoundingClientRect?.() || { width: 0, height: 0 };
+  const crop = visibleFaceCrop(video.videoWidth, video.videoHeight, box.width, box.height);
+  if (!crop) return Promise.resolve(null);
+  const size = jpegSize(crop.width, crop.height);
   const canvas = document.createElement('canvas');
-  const side = Math.min(video.videoWidth, video.videoHeight);
-  canvas.width = 640;
-  canvas.height = 640;
-  canvas.getContext('2d').drawImage(
-    video,
-    (video.videoWidth - side) / 2,
-    (video.videoHeight - side) / 2,
-    side,
-    side,
-    0,
-    0,
-    640,
-    640
-  );
+  canvas.width = size.width;
+  canvas.height = size.height;
+  const ctx = canvas.getContext('2d');
+  // Pratinjau di-mirror lewat CSS. JPEG memakai piksel mentah supaya foto tersimpan tidak terbalik dua kali.
+  ctx.drawImage(video, crop.x, crop.y, crop.width, crop.height, 0, 0, size.width, size.height);
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.72));
 }
 
