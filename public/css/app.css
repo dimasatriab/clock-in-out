@@ -290,6 +290,7 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
+  flex: 0 0 auto;
 }
 .depan-tautan { display: flex; gap: 16px; align-items: flex-start; }
 #tautan-admin[hidden] { display: none !important; }
@@ -332,6 +333,11 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 .depan .tautan-halus { color: rgba(255, 255, 255, 0.9); }
 .depan-lembar {
   pointer-events: auto;
+  margin-top: auto;
+  flex: 0 0 auto;
+  align-self: stretch;
+  height: auto;
+  width: 100%;
   padding: 14px;
   border-radius: 22px;
   background: rgba(28, 28, 30, 0.55);
@@ -341,8 +347,13 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 .depan-status {
   display: flex;
   align-items: flex-start;
+  align-self: flex-start;
+  flex: 0 0 auto;
   gap: 10px;
   margin: 0 0 12px;
+  height: auto;
+  min-height: 0;
+  width: 100%;
   color: #fff;
   font-size: 16px;
   font-weight: 600;
