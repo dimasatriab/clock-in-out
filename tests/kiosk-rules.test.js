@@ -3,30 +3,20 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import jpeg from 'jpeg-js';
 import { DatabaseSync } from 'node:sqlite';
 import { identifyFace } from '../src/biometrics.js';
 import { confirmedLabel, reduceKiosk } from '../src/kiosk.js';
 import { migrateSqlite, postgresStatements } from '../src/migrate.js';
 import { assertCooldown } from '../src/settings.js';
-import { isTooFlat, measureSharpness } from '../src/sharpness.js';
 import { arrivalFlag, jakartaDateLabel, rangeFromLabels, sumCompletedHours } from '../src/time.js';
 import { faceRuntime } from '../src/face.js';
 import { cookiePair, listen, multipart, request } from './http.js';
 import { makeJpeg } from './jpeg.js';
 
-const encoder = jpeg.default || jpeg;
-
 function descriptor(shift = 0) {
   const values = Array.from({ length: 128 }, (_, index) => ((index % 5) - 2) / 20);
   values[0] += shift;
   return values;
-}
-
-function solidJpeg(width, value) {
-  const data = Buffer.alloc(width * width * 4, value);
-  for (let i = 3; i < data.length; i += 4) data[i] = 255;
-  return Buffer.from(encoder.encode({ data, width, height: width }, 90).data);
 }
 
 test('mesin keadaan kios hanya mencatat setelah konfirmasi', () => {
@@ -55,11 +45,7 @@ test('jeda, jam selesai, dan batas terlambat', () => {
   assert.equal(identifyFace(descriptor(0.4), people, 0.3).error, 'face_unknown');
 });
 
-test('ketajaman menolak gambar datar dan migrasi menambah kolom', () => {
-  const flat = measureSharpness(solidJpeg(220, 40));
-  const noisy = measureSharpness(makeJpeg(3));
-  assert.equal(isTooFlat(flat, 50), true);
-  assert.equal(noisy.variance > 50, true);
+test('migrasi menambah kolom absensi dan sampel wajah', () => {
   const db = new DatabaseSync(':memory:');
   db.exec('CREATE TABLE attendance (id INTEGER PRIMARY KEY); CREATE TABLE face_samples (id INTEGER PRIMARY KEY);');
   migrateSqlite(db);
@@ -131,20 +117,20 @@ test('server menerapkan ambang, jeda, impor, dan pulang otomatis', async () => {
       cookie: adminCookie,
       json: {
         faceDistanceThreshold: 0.3,
-        frameSkip: 3,
         confirmationTimeoutSeconds: 10,
         detectionCooldownSeconds: 300,
-        sharpnessMin: 50,
         autoClockOutTime: '20:00',
         lateThreshold: '09:30:00',
-        maxEnrollmentFrames: 12,
         audioAnnouncements: true
       }
     });
     assert.equal(saved.status, 200, JSON.stringify(saved.data));
     assert.equal(saved.data.faceDistanceThreshold, 0.3);
+    assert.equal(saved.data.frameSkip, undefined);
+    assert.equal(saved.data.sharpnessMin, undefined);
     const kiosk = await request(server, { path: '/api/kiosk/pengaturan' });
-    assert.equal(kiosk.data.frameSkip, 3);
+    assert.equal(kiosk.data.frameSkip, undefined);
+    assert.equal(kiosk.data.sharpnessMin, undefined);
     assert.equal(kiosk.data.confirmationTimeoutSeconds, 10);
 
     const karyawan = await request(server, { path: '/api/admin/karyawan', cookie: adminCookie });

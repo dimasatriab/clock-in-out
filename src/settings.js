@@ -1,25 +1,19 @@
 export const SETTING_DEFAULTS = {
   faceDistanceThreshold: 0.5,
-  frameSkip: 3,
   confirmationTimeoutSeconds: 10,
   detectionCooldownSeconds: 30,
-  sharpnessMin: 50,
   autoClockOutTime: '20:00',
   lateThreshold: '09:30:00',
-  maxEnrollmentFrames: 12,
   audioAnnouncements: true,
   companyName: 'DBLESSMYRA'
 };
 
 const STORED_KEYS = {
   faceDistanceThreshold: 'face_distance_threshold',
-  frameSkip: 'frame_skip',
   confirmationTimeoutSeconds: 'confirmation_timeout_seconds',
   detectionCooldownSeconds: 'detection_cooldown_seconds',
-  sharpnessMin: 'sharpness_min',
   autoClockOutTime: 'auto_clockout_time',
   lateThreshold: 'late_threshold',
-  maxEnrollmentFrames: 'max_enrollment_frames',
   audioAnnouncements: 'audio_announcements',
   companyName: 'company_name'
 };
@@ -58,7 +52,6 @@ export function normalizeSettings(input = {}, config = {}) {
       0.8,
       thresholdFallback
     ) * 100) / 100,
-    frameSkip: Math.round(numberIn(source.frameSkip ?? source.frame_skip, 1, 10, SETTING_DEFAULTS.frameSkip)),
     confirmationTimeoutSeconds: Math.round(numberIn(
       source.confirmationTimeoutSeconds ?? source.confirmation_timeout_seconds,
       3,
@@ -71,15 +64,8 @@ export function normalizeSettings(input = {}, config = {}) {
       300,
       SETTING_DEFAULTS.detectionCooldownSeconds
     )),
-    sharpnessMin: Math.round(numberIn(source.sharpnessMin ?? source.sharpness_min, 0, 500, SETTING_DEFAULTS.sharpnessMin)),
     autoClockOutTime: clockOr(source.autoClockOutTime ?? source.auto_clockout_time, SETTING_DEFAULTS.autoClockOutTime, false),
     lateThreshold: clockOr(source.lateThreshold ?? source.late_threshold, SETTING_DEFAULTS.lateThreshold, true),
-    maxEnrollmentFrames: Math.round(numberIn(
-      source.maxEnrollmentFrames ?? source.max_enrollment_frames,
-      5,
-      40,
-      SETTING_DEFAULTS.maxEnrollmentFrames
-    )),
     audioAnnouncements: audio == null ? SETTING_DEFAULTS.audioAnnouncements : audio === true || audio === 1 || audio === '1' || audio === 'true',
     companyName: companyNameOr(source.companyName ?? source.company_name, SETTING_DEFAULTS.companyName)
   };

@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { capturePose, ensureModels, openCamera, stopStream, watchPose } from './face-capture.js';
+import { ensureModels, openCamera, snapshot, stopStream, watchFace } from './face-capture.js';
 import { durasi, esc, hariIniLabel, jamPendek, tanggalPendek } from './format.js';
 
 const aplikasi = document.querySelector('#aplikasi');
@@ -204,8 +204,6 @@ function gambarPengaturan() {
       <input name="confirmationTimeoutSeconds" type="number" min="3" max="60" value="${esc(atur.confirmationTimeoutSeconds ?? 10)}" required>
       <label>Jeda antar absen (detik)</label>
       <input name="detectionCooldownSeconds" type="number" min="0" max="300" value="${esc(atur.detectionCooldownSeconds ?? 30)}" required>
-      <label>Ketajaman minimum</label>
-      <input name="sharpnessMin" type="number" min="0" max="500" value="${esc(atur.sharpnessMin ?? 50)}" required>
       <label>Jam pulang otomatis</label>
       <input name="autoClockOutTime" type="time" value="${esc(atur.autoClockOutTime || '20:00')}" required>
       <label>Batas terlambat</label>
@@ -619,7 +617,6 @@ function pasangAksi(isi) {
       faceDistanceThreshold: Number(data.get('faceDistanceThreshold')),
       confirmationTimeoutSeconds: Number(data.get('confirmationTimeoutSeconds')),
       detectionCooldownSeconds: Number(data.get('detectionCooldownSeconds')),
-      sharpnessMin: Number(data.get('sharpnessMin')),
       autoClockOutTime: data.get('autoClockOutTime'),
       lateThreshold: late.length === 5 ? `${late}:00` : late,
       audioAnnouncements: data.get('audioAnnouncements') === 'on'
@@ -686,74 +683,29 @@ function gambarLingkaran() {
   peta.setView([lat, lng], 16);
 }
 
-function wajahDepan(pose) {
-  if (!pose) return 'Arahkan wajah ke lingkaran.';
-  if ((pose.score ?? 1) < 0.45) return 'Wajah kurang jelas.';
-  if ((pose.sharpness ?? 999) < 50) return 'Foto terlalu datar. Jangan memakai cetakan.';
-  if ((pose.box?.width ?? 200) < 80) return 'Dekatkan wajah.';
-  if (Math.abs(pose.yaw) > 0.22 || Math.abs(pose.pitch) > 0.2) return 'Hadap lurus ke kamera.';
-  return '';
-}
-
-const TUNGGU_POSE = 480;
-
-function tunggu(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function ambilDepan() {
   const cincin = document.querySelector('.cincin');
   const ambil = document.querySelector('#kamera-ambil');
   const batal = document.querySelector('#kamera-batal');
+  const signal = new AbortController();
   return new Promise((resolve, reject) => {
-    let baikSejak = 0;
     let selesai = false;
-    let mengambil = false;
-    const stop = watchPose(video, {
-      onFrame(pose) {
-        if (selesai || mengambil) return;
-        const alasan = wajahDepan(pose);
-        if (alasan) {
-          baikSejak = 0;
-          cincin.classList.remove('siap');
-          statusKamera.textContent = alasan;
-          return;
-        }
-        const now = performance.now();
-        if (!baikSejak) baikSejak = now;
-        cincin.classList.add('siap');
-        statusKamera.textContent = now - baikSejak >= TUNGGU_POSE ? 'Mengambil foto depan…' : 'Tahan sebentar…';
-        if (now - baikSejak >= TUNGGU_POSE) simpan(3);
-      }
-    });
     const bersih = () => {
-      stop();
+      signal.abort();
       ambil.removeEventListener('click', onAmbil);
       batal.removeEventListener('click', onBatal);
       cincin.classList.remove('siap');
     };
-    const simpan = async (jumlah) => {
-      if (selesai || mengambil) return;
-      mengambil = true;
-      const shots = [];
-      for (let i = 0; i < jumlah; i += 1) {
-        const pose = await capturePose(video);
-        const alasan = wajahDepan(pose);
-        if (alasan) {
-          mengambil = false;
-          baikSejak = 0;
-          cincin.classList.remove('siap');
-          statusKamera.textContent = alasan;
-          return;
-        }
-        shots.push(pose);
-        if (i < jumlah - 1) await tunggu(120);
-      }
+    const simpan = (blob) => {
+      if (selesai || !blob) return;
       selesai = true;
       bersih();
-      resolve(shots);
+      resolve([{ blob }]);
     };
-    const onAmbil = () => { simpan(1); };
+    const onAmbil = async () => {
+      statusKamera.textContent = 'Mengambil foto…';
+      simpan(await snapshot(video));
+    };
     const onBatal = () => {
       if (selesai) return;
       selesai = true;
@@ -762,6 +714,18 @@ function ambilDepan() {
     };
     ambil.addEventListener('click', onAmbil);
     batal.addEventListener('click', onBatal);
+    watchFace(video, {
+      signal: signal.signal,
+      onStatus(teks) {
+        if (!selesai) statusKamera.textContent = teks === 'Ready' ? 'Arahkan wajah ke kamera.' : teks;
+      }
+    }).then((hasil) => simpan(hasil.frames[0]?.blob)).catch((error) => {
+      if (!selesai && error.name !== 'AbortError') {
+        selesai = true;
+        bersih();
+        reject(error);
+      }
+    });
   });
 }
 
@@ -773,7 +737,7 @@ async function daftarWajah(id) {
     statusKamera.textContent = 'Menyiapkan kamera…';
     await ensureModels((text) => { statusKamera.textContent = text; });
     stream = await openCamera(video);
-    statusKamera.textContent = 'Hadapkan wajah lurus ke lingkaran.';
+    statusKamera.textContent = 'Arahkan wajah ke kamera.';
     const hasilFoto = await ambilDepan();
     shots.push(...hasilFoto);
     statusKamera.textContent = 'Menyimpan wajah…';
@@ -799,6 +763,7 @@ function tutupKamera() {
 }
 
 document.querySelector('#kamera-batal').addEventListener('click', tutupKamera);
+ensureModels().catch(() => {});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
 async function buka() {

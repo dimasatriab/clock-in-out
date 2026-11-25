@@ -89,12 +89,11 @@ async function detectLoaded(buffer) {
   const height = Math.max(1, Math.round(image.height * scale));
   const canvas = new Canvas(width, height);
   canvas.getContext('2d').drawImage(image, 0, 0, width, height);
-  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.45 });
+  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
   const found = await faceapi.detectAllFaces(canvas, options).withFaceLandmarks().withFaceDescriptors();
   if (!found.length) return { error: 'no_face' };
-  if (found.length > 1) return { error: 'multiple_faces' };
+  found.sort((left, right) => right.detection.box.width - left.detection.box.width);
   const face = found[0];
-  if (face.detection.box.width < 50) return { error: 'face_too_small' };
   const descriptor = Array.from(face.descriptor);
   if (descriptor.length !== 128) return { error: 'no_face' };
   return {

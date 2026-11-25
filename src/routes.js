@@ -5,7 +5,6 @@ import { assertNotLocked, clearLoginFailures, recordLoginFailure } from './locko
 import { parseCompanyName } from './settings.js';
 import { assessEnrollment, bestFaceDistance } from './biometrics.js';
 import { faceRuntime } from './face.js';
-import { isTooFlat, measureSharpness } from './sharpness.js';
 import { assertCooldown } from './settings.js';
 import { normalizeImportRow, parseAttendanceTable } from './import-attendance.js';
 import { matchGeofence } from './geo.js';
@@ -257,21 +256,19 @@ function validateFrames(files) {
   return { ok: true };
 }
 
-async function readFaces(files, sharpnessMin = 0) {
+async function readFaces(files) {
   const checked = validateFrames(files);
   if (checked.error) return checked;
   const frames = [];
   for (const file of files) {
     const face = await faceRuntime.detect(file.buffer);
     if (face.error) return { error: face.error };
-    const sharp = measureSharpness(file.buffer);
-    if (isTooFlat(sharp, sharpnessMin)) return { error: 'photo_flat' };
-    frames.push({ ...face, sharpness: sharp.variance, buffer: file.buffer });
+    frames.push({ ...face, buffer: file.buffer });
   }
   return { frames };
 }
 
-async function readEnrollment(files, sharpnessMin) {
+async function readEnrollment(files) {
   if (!files?.length || files.length > 3) return { error: 'need_face' };
   const hashes = new Set();
   const frames = [];
@@ -282,11 +279,8 @@ async function readEnrollment(files, sharpnessMin) {
     hashes.add(image.hash);
     const face = await faceRuntime.detect(files[index].buffer);
     if (face.error) return { error: face.error };
-    const sharp = measureSharpness(files[index].buffer);
-    if (isTooFlat(sharp, sharpnessMin)) return { error: 'photo_flat' };
     frames.push({
       ...face,
-      sharpness: sharp.variance,
       pose: 'depan',
       buffer: files[index].buffer
     });
@@ -425,7 +419,7 @@ export function registerRoutes(app) {
     const consumed = repo.consumeChallenge(dbOf(req), hashToken(token), employee.id, now.toISOString());
     if (!consumed) return sendError(res, 'challenge');
 
-    const read = await readFaces(req.files, settings.sharpnessMin);
+    const read = await readFaces(req.files);
     if (read.error) return sendError(res, read.error);
     const faceDistance = bestFaceDistance(read.frames[0].descriptor, samples.map((sample) => sample.descriptor));
     const open = repo.openAttendance(dbOf(req), employee.id);
@@ -494,7 +488,7 @@ export function registerRoutes(app) {
     if (checked.error) return sendError(res, checked.error);
     const samples = repo.faceSamples(dbOf(req), employee.id);
     if (samples.length < 1) return sendError(res, 'face_not_enrolled');
-    const read = await readFaces(req.files, settings.sharpnessMin);
+    const read = await readFaces(req.files);
     if (read.error) return sendError(res, read.error);
     const faceDistance = bestFaceDistance(read.frames[0].descriptor, samples.map((sample) => sample.descriptor));
     if (!Number.isFinite(faceDistance) || faceDistance > settings.faceDistanceThreshold) {
@@ -584,10 +578,8 @@ export function registerRoutes(app) {
   app.get('/api/kiosk/pengaturan', (req, res) => {
     const settings = repo.getSettings(dbOf(req), configOf(req));
     sendOk(res, {
-      frameSkip: settings.frameSkip,
       confirmationTimeoutSeconds: settings.confirmationTimeoutSeconds,
       detectionCooldownSeconds: settings.detectionCooldownSeconds,
-      sharpnessMin: settings.sharpnessMin,
       audioAnnouncements: settings.audioAnnouncements,
       lateThreshold: settings.lateThreshold,
       companyName: settings.companyName
@@ -685,14 +677,13 @@ export function registerRoutes(app) {
     if (!requireAdmin(req, res)) return;
     const employee = repo.getEmployee(dbOf(req), Number(req.params.id));
     if (!employee) return sendError(res, 'not_found', 404);
-    const settings = repo.getSettings(dbOf(req), configOf(req));
-    const read = await readEnrollment(req.files, settings.sharpnessMin);
+    const read = await readEnrollment(req.files);
     if (read.error) return sendError(res, read.error);
     const enrollment = assessEnrollment(read.frames);
     if (!enrollment.ok) return sendError(res, enrollment.error);
     const config = configOf(req);
     const paths = read.frames.map((frame) => saveJpeg(config, frame.buffer));
-    const kept = read.frames.reduce((best, frame, index) => (frame.sharpness > best.frame.sharpness ? { frame, index } : best), { frame: read.frames[0], index: 0 });
+    const kept = { frame: read.frames[0], index: 0 };
     try {
       const replaced = repo.replaceFaceSamples(dbOf(req), employee.id, [{
         descriptor: enrollment.descriptor,

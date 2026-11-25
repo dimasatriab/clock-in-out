@@ -32,21 +32,11 @@ export function identifyFace(probe, people, maxDistance) {
   return { ok: true, id: ranked[0].id, distance: ranked[0].distance };
 }
 
-function validFrame(frame) {
-  if (!frame) return false;
-  if (!Number.isFinite(frame.ear) || frame.ear < 0.02 || frame.ear > 0.7) return false;
-  if (!Number.isFinite(frame.yaw) || frame.yaw < -2 || frame.yaw > 2) return false;
-  if (!Array.isArray(frame.descriptor) || frame.descriptor.length !== DESCRIPTOR_LENGTH) return false;
-  return frame.descriptor.every((value) => Number.isFinite(value));
-}
-
-function samePerson(frames, maxDistance) {
-  for (let i = 0; i < frames.length; i += 1) {
-    for (let j = i + 1; j < frames.length; j += 1) {
-      if (euclidean(frames[i].descriptor, frames[j].descriptor) > maxDistance) return false;
-    }
-  }
-  return true;
+function descriptorOf(frame) {
+  const descriptor = frame?.descriptor;
+  if (!Array.isArray(descriptor) || descriptor.length !== DESCRIPTOR_LENGTH) return null;
+  if (!descriptor.every((value) => Number.isFinite(value))) return null;
+  return descriptor;
 }
 
 export function averageDescriptors(descriptors) {
@@ -60,21 +50,9 @@ export function averageDescriptors(descriptors) {
   return sum.map((value) => value / descriptors.length);
 }
 
-function frontal(frame) {
-  const yaw = Number(frame?.yaw);
-  const pitch = Number(frame?.pitch);
-  if (!Number.isFinite(yaw) || !Number.isFinite(pitch)) return false;
-  return Math.abs(yaw) <= 0.28 && Math.abs(pitch) <= 0.28;
-}
-
 export function assessEnrollment(frames) {
-  if (!Array.isArray(frames) || frames.length < 1 || frames.length > 3 || frames.some((frame) => !validFrame(frame))) {
-    return { ok: false, error: 'need_face' };
-  }
-  if (frames.some((frame) => Number.isFinite(frame.score) && frame.score < 0.45)) {
-    return { ok: false, error: 'face_quality' };
-  }
-  if (frames.some((frame) => !frontal(frame))) return { ok: false, error: 'not_frontal' };
-  if (!samePerson(frames, 0.6)) return { ok: false, error: 'different_person' };
-  return { ok: true, descriptor: averageDescriptors(frames.map((frame) => frame.descriptor)) };
+  if (!Array.isArray(frames) || frames.length < 1 || frames.length > 3) return { ok: false, error: 'need_face' };
+  const descriptors = frames.map(descriptorOf);
+  if (descriptors.some((descriptor) => !descriptor)) return { ok: false, error: 'need_face' };
+  return { ok: true, descriptor: averageDescriptors(descriptors) };
 }

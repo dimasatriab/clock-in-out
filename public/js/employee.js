@@ -264,7 +264,6 @@ async function layarDepan() {
 
 async function pindai(signal, token, awal) {
   const pengaturan = awal || await api('/api/kiosk/pengaturan').catch(() => ({
-    frameSkip: 3,
     confirmationTimeoutSeconds: 10,
     audioAnnouncements: true
   }));
@@ -380,6 +379,7 @@ tombolStatus.addEventListener('click', async () => {
   }
 });
 
+ensureModels().catch(() => {});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
 layarDepan();

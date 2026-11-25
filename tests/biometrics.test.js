@@ -12,16 +12,15 @@ function frame(ear, yaw, shift = 0, pitch = 0) {
   return { ear, yaw, pitch, score: 0.9, descriptor: descriptor(shift) };
 }
 
-test('pendaftaran wajah menerima foto depan dan menolak wajah menoleh', () => {
-  const satu = assessEnrollment([frame(0.3, 0)]);
+test('pendaftaran wajah menerima satu descriptor, termasuk wajah yang menoleh', () => {
+  const satu = assessEnrollment([frame(0.3, 0.8)]);
   assert.equal(satu.ok, true);
   assert.equal(satu.descriptor.length, 128);
-  const tiga = assessEnrollment([frame(0.3, 0.05), frame(0.3, -0.04, 0, 0.02), frame(0.3, 0.02)]);
+  const tiga = assessEnrollment([frame(0.3, 0.5), frame(0.3, -0.4, 0, 0.2), frame(0.3, 0.9)]);
   assert.equal(tiga.ok, true);
   assert.ok(euclidean(tiga.descriptor, descriptor()) < 1e-9);
   assert.equal(assessEnrollment([]).error, 'need_face');
-  assert.equal(assessEnrollment([frame(0.3, 0.5)]).error, 'not_frontal');
-  assert.equal(assessEnrollment([frame(0.3, 0, 0), frame(0.3, 0, 2)]).error, 'different_person');
+  assert.equal(assessEnrollment([{ ear: 0.3, yaw: 0 }]).error, 'need_face');
   assert.ok(bestFaceDistance(descriptor(), [descriptor(0.02), descriptor(1)]) < 0.05);
   assert.equal(euclidean([1, 0], [0, 0]), 1);
 });
