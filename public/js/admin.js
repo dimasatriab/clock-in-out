@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { ensureModels, openCamera, snapshot, stopStream, watchFace } from './face-capture.js';
-import { durasi, esc, hariIniLabel, jamPendek, tanggalPendek } from './format.js';
+import { durasi, esc, hariIniLabel, jamPendek, tanggalPendek, tanggalSingkat } from './format.js';
 
 const aplikasi = document.querySelector('#aplikasi');
 const kamera = document.querySelector('#kamera');
@@ -180,7 +180,10 @@ function kerangka() {
           ${menu.map(([id, label]) => `<button type="button" data-bagian="${id}" class="${state.bagian === id ? 'aktif' : ''}">${label}</button>`).join('')}
         </nav>
       </aside>
-      <button class="lonceng" id="lonceng" type="button">Lonceng <span id="lonceng-jumlah" ${state.belumBaca ? '' : 'hidden'}>${state.belumBaca}</span></button>
+      <div class="sudut-admin">
+        <button class="keluar-admin" id="keluar-admin" type="button">Keluar</button>
+        <button class="lonceng" id="lonceng" type="button">Lonceng <span id="lonceng-jumlah" ${state.belumBaca ? '' : 'hidden'}>${state.belumBaca}</span></button>
+      </div>
       <div class="lonceng-panel" id="lonceng-panel" hidden></div>
       <main class="isi">
         <div class="isi-dalam" id="isi"></div>
@@ -221,7 +224,7 @@ function gambarHari() {
   const ringkas = state.hari.ringkasan;
   const puncak = Math.max(1, ...(state.hari.minggu || []).map((hari) => hari.jumlah));
   return `
-    <h1 style="margin-top:0">Hari ini · ${esc(state.hari.tanggal)}</h1>
+    <h1 class="judul-hari">Hari ini <span>${esc(tanggalSingkat(state.hari.tanggal))}</span></h1>
     <div class="statistik">
       ${[['Hadir', ringkas.hadir], ['Belum', ringkas.belum], ['Terlambat', ringkas.terlambat], ['Awal', ringkas.awal || 0]].map(([label, nilai]) => `
         <article class="kartu" style="margin:0"><div class="mini">${label}</div><div class="angka">${nilai}</div></article>`).join('')}
@@ -525,7 +528,18 @@ async function gambar() {
   if (state.bagian === 'lokasi') siapkanPeta();
 }
 
+async function keluarAdmin() {
+  await api('/api/admin/keluar', { method: 'POST', body: {} }).catch(() => {});
+  if (aliran) {
+    aliran.close();
+    aliran = null;
+  }
+  clearInterval(timer);
+  masuk();
+}
+
 function pasangLonceng() {
+  document.querySelector('#keluar-admin')?.addEventListener('click', keluarAdmin);
   const tombol = document.querySelector('#lonceng');
   const panel = document.querySelector('#lonceng-panel');
   if (!tombol || !panel) return;

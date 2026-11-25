@@ -60,6 +60,17 @@ export function tanggalPendek(iso) {
   }).format(new Date(iso));
 }
 
+export function tanggalSingkat(iso) {
+  const cocok = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if (!cocok) return '';
+  const tanggal = new Date(Date.UTC(Number(cocok[1]), Number(cocok[2]) - 1, Number(cocok[3])));
+  return new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'short'
+  }).format(tanggal);
+}
+
 export function durasi(hours) {
   if (hours == null) return '—';
   const total = Math.round(hours * 60);
