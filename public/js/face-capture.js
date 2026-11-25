@@ -1,4 +1,8 @@
-const OPTIONS = { inputSize: 320, scoreThreshold: 0.3 };
+const OPTIONS = { inputSize: 224, scoreThreshold: 0.5 };
+const DETECT_WIDTH = 240;
+const MIN_SCORE = 0.55;
+const MIN_BOX = 0.18;
+const MIN_STREAK = 2;
 let scriptPromise;
 let modelPromise;
 
@@ -125,8 +129,8 @@ export function snapshot(video) {
     side,
     0,
     0,
-    480,
-    480
+    640,
+    640
   );
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.72));
 }
@@ -175,7 +179,8 @@ export function watchFace(video, { signal, onBox, onStatus } = {}) {
             return;
           }
           onBox?.(face.box);
-          selesai(face.box);
+          if (face.stable) selesai(face.box);
+          else onStatus?.('Wajah terlihat', 'scanning');
         }
       });
     };
@@ -192,25 +197,46 @@ export function watchFace(video, { signal, onBox, onStatus } = {}) {
 
 function watchDetection(video, { signal, onFrame } = {}) {
   const options = detectorOptions();
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d', { willReadFrequently: true });
   let stopped = false;
   let busy = false;
+  let streak = 0;
   const stop = () => { stopped = true; };
   const loop = async () => {
     if (stopped) return;
-    if (!busy && video.readyState >= 2 && window.faceapi) {
+    if (!busy && video.readyState >= 2 && video.videoWidth && window.faceapi) {
       busy = true;
       try {
-        const detection = await window.faceapi.detectSingleFace(video, options);
+        const height = Math.max(1, Math.round(video.videoHeight * (DETECT_WIDTH / video.videoWidth)));
+        if (canvas.width !== DETECT_WIDTH || canvas.height !== height) {
+          canvas.width = DETECT_WIDTH;
+          canvas.height = height;
+        }
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const detection = await window.faceapi.detectSingleFace(canvas, options);
         if (stopped) return;
-        if (!detection) onFrame?.(null);
-        else {
-          const box = detection.box;
+        const box = detection?.box;
+        const besar = box && box.width / canvas.width >= MIN_BOX;
+        if (!detection || detection.score < MIN_SCORE || !besar) {
+          streak = 0;
+          onFrame?.(null);
+        } else {
+          streak += 1;
+          const scale = video.videoWidth / canvas.width;
           onFrame?.({
             score: detection.score,
-            box: { x: box.x, y: box.y, width: box.width, height: box.height }
+            stable: streak >= MIN_STREAK,
+            box: {
+              x: box.x * scale,
+              y: box.y * scale,
+              width: box.width * scale,
+              height: box.height * scale
+            }
           });
         }
       } catch {
+        streak = 0;
         if (!stopped) onFrame?.(null);
       } finally {
         busy = false;

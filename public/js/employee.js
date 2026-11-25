@@ -270,6 +270,7 @@ async function pindai(signal, token, awal) {
   while (!signal.aborted && masihLayar(token)) {
     gambarKotak(null);
     setStatus('Ready', 'ready');
+    const titikJanji = posisi();
     let gerak;
     try {
       gerak = await watchFace(video, {
@@ -292,7 +293,7 @@ async function pindai(signal, token, awal) {
     setStatus('Mencocokkan wajah…', 'scanning');
     let titik;
     try {
-      titik = await posisi();
+      titik = await titikJanji;
     } catch (error) {
       if (signal.aborted || !masihLayar(token)) return;
       setStatus(error.message, 'error');
@@ -315,30 +316,20 @@ async function pindai(signal, token, awal) {
       continue;
     }
     if (signal.aborted || !masihLayar(token)) return;
-    const pilihan = await tungguPilihan(kenali.nama, pengaturan.confirmationTimeoutSeconds || 10, signal);
-    if (pilihan === 'abort') return;
-    if (pilihan === 'timeout') {
-      setStatus('Ready', 'ready');
-      continue;
-    }
-    form.set('action', pilihan);
+    const aksi = kenali.sesiTerbuka ? 'out' : 'in';
+    form.set('action', aksi);
     form.set('token', kenali.token);
     try {
       const hasil = await api('/api/karyawan/absen', { method: 'POST', form });
-      const saat = jamPendek(pilihan === 'out' ? hasil.absensi?.clockOutAt : hasil.absensi?.clockInAt);
-      tampilPita(pilihan, kenali.nama, saat);
-      setStatus(pilihan === 'out' ? 'Clock Out' : 'Clock In', 'success');
-      ucapkan(pilihan === 'out' ? `Absen pulang dikonfirmasi, ${kenali.nama}` : `Absen masuk dikonfirmasi, ${kenali.nama}`, pengaturan.audioAnnouncements);
-      await tunggu(2000, signal);
+      ucapkan(aksi === 'out' ? `Absen pulang, ${kenali.nama}` : `Absen masuk, ${kenali.nama}`, pengaturan.audioAnnouncements);
+      tutupKamera();
+      await tampilBeranda(hasil.pesan);
+      return;
     } catch (error) {
       if (signal.aborted || !masihLayar(token)) return;
       setStatus(error.message, 'error');
       await tunggu(1800, signal);
     }
-    const pita = document.querySelector('#pita');
-    if (pita) pita.hidden = true;
-    if (signal.aborted || !masihLayar(token)) return;
-    setStatus('Ready', 'ready');
   }
 }
 
