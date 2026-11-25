@@ -5,7 +5,8 @@ export const SETTING_DEFAULTS = {
   autoClockOutTime: '20:00',
   lateThreshold: '09:30:00',
   audioAnnouncements: true,
-  companyName: 'DBLESSMYRA'
+  companyName: 'DBLESSMYRA',
+  photoRetentionDays: 90
 };
 
 const STORED_KEYS = {
@@ -15,7 +16,8 @@ const STORED_KEYS = {
   autoClockOutTime: 'auto_clockout_time',
   lateThreshold: 'late_threshold',
   audioAnnouncements: 'audio_announcements',
-  companyName: 'company_name'
+  companyName: 'company_name',
+  photoRetentionDays: 'photo_retention_days'
 };
 
 function clamp(value, min, max) {
@@ -67,7 +69,13 @@ export function normalizeSettings(input = {}, config = {}) {
     autoClockOutTime: clockOr(source.autoClockOutTime ?? source.auto_clockout_time, SETTING_DEFAULTS.autoClockOutTime, false),
     lateThreshold: clockOr(source.lateThreshold ?? source.late_threshold, SETTING_DEFAULTS.lateThreshold, true),
     audioAnnouncements: audio == null ? SETTING_DEFAULTS.audioAnnouncements : audio === true || audio === 1 || audio === '1' || audio === 'true',
-    companyName: companyNameOr(source.companyName ?? source.company_name, SETTING_DEFAULTS.companyName)
+    companyName: companyNameOr(source.companyName ?? source.company_name, SETTING_DEFAULTS.companyName),
+    photoRetentionDays: Math.round(numberIn(
+      source.photoRetentionDays ?? source.photo_retention_days,
+      1,
+      3650,
+      SETTING_DEFAULTS.photoRetentionDays
+    ))
   };
 }
 

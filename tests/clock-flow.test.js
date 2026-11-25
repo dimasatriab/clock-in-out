@@ -200,9 +200,14 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
     }, [face(0.34, 0), face(0.14, 0), face(0.33, 0)]);
     assert.equal(closed.data.error, 'not_clocked_in');
 
-    const photo = await request(server, {
+    const milik = await request(server, {
       path: `/api/foto/absensi/${clockIn.data.absensi.id}/masuk/0`,
       cookie: employeeCookie
+    });
+    assert.equal(milik.status, 403);
+    const photo = await request(server, {
+      path: `/api/foto/absensi/${clockIn.data.absensi.id}/masuk/0`,
+      cookie: adminCookie
     });
     assert.equal(photo.status, 200);
     assert.equal(photo.buf[0], 0xff);
@@ -217,7 +222,7 @@ test('alur absen menolak lokasi, wajah, dan kedipan palsu', async () => {
       path: `/api/foto/absensi/${clockIn.data.absensi.id}/masuk`,
       cookie: cookiePair(andi.setCookie, 'hadir_karyawan')
     });
-    assert.equal(hidden.status, 404);
+    assert.equal(hidden.status, 403);
 
     const exported = await request(server, {
       path: '/api/admin/ekspor.csv',

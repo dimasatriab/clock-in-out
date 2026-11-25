@@ -113,8 +113,8 @@ export function snapshot(video) {
   if (!video.videoWidth) return Promise.resolve(null);
   const canvas = document.createElement('canvas');
   const side = Math.min(video.videoWidth, video.videoHeight);
-  canvas.width = 480;
-  canvas.height = 480;
+  canvas.width = 640;
+  canvas.height = 640;
   canvas.getContext('2d').drawImage(
     video,
     (video.videoWidth - side) / 2,
@@ -126,7 +126,7 @@ export function snapshot(video) {
     480,
     480
   );
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.82));
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.72));
 }
 
 function detectorOptions() {

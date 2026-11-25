@@ -51,7 +51,7 @@ test('hapus karyawan dan lokasi menjaga riwayat', async () => {
     const nisa = daftar.data.karyawan.find((item) => item.name === 'Nisa Putri');
     const adminOrang = daftar.data.karyawan.find((item) => item.phone === '081299000001');
     const toko = daftar.data.lokasi.find((item) => item.name.includes('DBLESS'));
-    const photo = saveJpeg(app.locals.config, makeJpeg(9));
+    const photo = await saveJpeg(app.locals.config, makeJpeg(9));
     insertClockIn(app.locals.db, {
       employeeId: nisa.id,
       locationId: toko.id,

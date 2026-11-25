@@ -132,7 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_attendance_in ON attendance(clock_in_at);
 
 export function openDatabase(config) {
   fs.mkdirSync(config.dataDir, { recursive: true });
-  fs.mkdirSync(path.join(config.dataDir, 'uploads'), { recursive: true });
+  fs.mkdirSync(config.uploadDir || path.join(config.dataDir, 'uploads'), { recursive: true });
   const db = new DatabaseSync(path.join(config.dataDir, 'hadir.sqlite'));
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA busy_timeout = 5000');

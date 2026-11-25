@@ -1,4 +1,4 @@
-const CACHE = 'hadir-v3';
+const CACHE = 'hadir-v4';
 const SHELL = ['/', '/admin/', '/css/app.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -11,6 +11,21 @@ self.addEventListener('activate', (event) => {
     await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
     await self.clients.claim();
   })());
+});
+
+self.addEventListener('push', (event) => {
+  const data = event.data ? event.data.json() : {};
+  event.waitUntil(self.registration.showNotification(data.title || 'Hadir', {
+    body: data.body || 'Ada absen baru.',
+    icon: '/icons/icon-192.png',
+    data: { url: data.url || '/admin/' }
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/admin/';
+  event.waitUntil(self.clients.openWindow(url));
 });
 
 self.addEventListener('fetch', (event) => {

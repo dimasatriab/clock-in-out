@@ -4,7 +4,8 @@ import { createApp } from './app.js';
 import { getConfig } from './config.js';
 import { loadEnv } from './env.js';
 import { faceRuntime, loadFaceModels } from './face.js';
-import { sweepAutoClockOut } from './repo.js';
+import { purgeExpiredPhotos } from './retention.js';
+import { getSettings, sweepAutoClockOut } from './repo.js';
 import { prepareAssets } from '../scripts/prepare-assets.js';
 
 loadEnv(path.resolve('.env'));
@@ -32,10 +33,19 @@ const server = app.listen(config.port, config.host, () => {
   console.log(`Pemeriksa wajah: ${faceRuntime.ready ? 'siap' : 'belum siap'}`);
 });
 
+function sweep() {
+  const closed = sweepAutoClockOut(app.locals.db, config);
+  if (closed) console.log(`Pulang otomatis: ${closed} sesi.`);
+  const days = getSettings(app.locals.db, config).photoRetentionDays;
+  const removed = purgeExpiredPhotos(app.locals.db, config, days);
+  if (removed) console.log(`Foto lama dihapus: ${removed}.`);
+}
+
+try { sweep(); } catch (error) { console.error(error); }
+
 const sweepTimer = setInterval(() => {
   try {
-    const closed = sweepAutoClockOut(app.locals.db, config);
-    if (closed) console.log(`Pulang otomatis: ${closed} sesi.`);
+    sweep();
   } catch (error) {
     console.error(error);
   }

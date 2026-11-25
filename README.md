@@ -25,7 +25,7 @@ Admin masuk dengan nomor HP dan PIN itu. Nilai disimpan sebagai hash. PIN bisa d
 
 Data percobaan (tiga lokasi contoh dan tiga karyawan) hanya muncul jika `DEMO=1` dan `DEMO_PIN` diisi, dan tidak pernah di production. Wajah belum terdaftar sampai admin mengambil satu foto depan.
 
-Foto bukti tersimpan di `data/uploads/` dan tidak masuk git.
+Foto bukti absen disimpan di `UPLOAD_DIR` (bawaan `data/uploads/`) dan tidak masuk git. Hanya admin yang bisa membukanya. Foto lebih lama dari pengaturan simpan (bawaan 90 hari) dihapus. Setiap masuk dan pulang memunculkan lonceng di dasbor. `WA_NOTIFY_URL` dan kunci VAPID kosong berarti WhatsApp dan notifikasi ponsel tidak dikirim.
 
 ## Cara pakai
 

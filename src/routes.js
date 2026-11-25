@@ -12,6 +12,7 @@ import { validateJpeg } from './images.js';
 import { clientIp, hashToken, readCookies, sameOrigin, sendError, sendOk, tokenPair, wantsJson } from './http.js';
 import { isValidPhone, isValidPin, normalizePhone } from './phone.js';
 import { dummySecretHash, hashSecret, verifySecret } from './password.js';
+import { publishPunch, listNotices, markNoticesRead, openNoticeStream, pushConfigured, savePushSubscription, unreadCount } from './notices.js';
 import { removeUpload, resolveUpload, saveJpeg } from './photos.js';
 import { rateLimit } from './rate-limit.js';
 import { evaluateClock } from './rules.js';
@@ -116,9 +117,10 @@ function requireAdmin(req, res) {
   return admin;
 }
 
-function recordPunch(req, res, { employee, action, frames, evidenceIndex, faceDistance, decision, now }) {
+async function recordPunch(req, res, { employee, action, frames, evidenceIndex, faceDistance, decision, now }) {
   const config = configOf(req);
-  const paths = frames.map((frame) => saveJpeg(config, frame.buffer));
+  const paths = [];
+  for (const frame of frames) paths.push(await saveJpeg(config, frame.buffer));
   try {
     if (action === 'in') {
       const id = repo.insertClockIn(dbOf(req), {
@@ -136,12 +138,14 @@ function recordPunch(req, res, { employee, action, frames, evidenceIndex, faceDi
         lateMinutes: decision.lateMinutes
       });
       const terlambat = decision.lateMinutes > 0 ? ` Terlambat ${decision.lateMinutes} menit.` : '';
+      const absensi = repo.getAttendance(dbOf(req), id);
       sendOk(res, {
         pesan: `${employee.name} absen masuk.${terlambat}`,
         nama: employee.name,
         aksi: 'in',
-        absensi: repo.getAttendance(dbOf(req), id)
+        absensi
       });
+      await kabari(req, absensi, 'in', employee.name);
       return;
     }
     const open = repo.openAttendance(dbOf(req), employee.id);
@@ -159,6 +163,7 @@ function recordPunch(req, res, { employee, action, frames, evidenceIndex, faceDi
     });
     const absensi = repo.getAttendance(dbOf(req), open.id);
     const durasi = formatDurasi(absensi.hoursWorked);
+    await kabari(req, absensi, 'out', employee.name);
     sendOk(res, {
       pesan: durasi ? `${employee.name} absen pulang. ${durasi}.` : `${employee.name} absen pulang.`,
       nama: employee.name,
@@ -172,6 +177,25 @@ function recordPunch(req, res, { employee, action, frames, evidenceIndex, faceDi
       return;
     }
     throw error;
+  }
+}
+
+async function kabari(req, absensi, action, name) {
+  try {
+    const masuk = action !== 'out';
+    await publishPunch(dbOf(req), configOf(req), {
+      attendanceId: absensi.id,
+      action,
+      employeeName: name,
+      clockAt: masuk ? absensi.clockInAt : absensi.clockOutAt,
+      locationName: masuk ? absensi.locationName : (absensi.outLocationName || absensi.locationName),
+      lat: masuk ? absensi.inLat : absensi.outLat,
+      lng: masuk ? absensi.inLng : absensi.outLng,
+      accuracy: masuk ? absensi.inAccuracy : absensi.outAccuracy,
+      faceDistance: masuk ? absensi.inFaceDistance : absensi.outFaceDistance
+    });
+  } catch (error) {
+    console.error(error);
   }
 }
 
@@ -442,7 +466,7 @@ export function registerRoutes(app) {
       });
     }
 
-    recordPunch(req, res, {
+    await recordPunch(req, res, {
       employee,
       action: req.body.action,
       frames: read.frames,
@@ -682,7 +706,8 @@ export function registerRoutes(app) {
     const enrollment = assessEnrollment(read.frames);
     if (!enrollment.ok) return sendError(res, enrollment.error);
     const config = configOf(req);
-    const paths = read.frames.map((frame) => saveJpeg(config, frame.buffer));
+    const paths = [];
+    for (const frame of read.frames) paths.push(await saveJpeg(config, frame.buffer));
     const kept = { frame: read.frames[0], index: 0 };
     try {
       const replaced = repo.replaceFaceSamples(dbOf(req), employee.id, [{
@@ -847,17 +872,56 @@ export function registerRoutes(app) {
     sendExport(req, res, 'xls');
   });
 
+  app.get('/api/admin/notifikasi', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    sendOk(res, { notifikasi: listNotices(dbOf(req)), belumBaca: unreadCount(dbOf(req)) });
+  });
+
+  app.post('/api/admin/notifikasi/baca', (req, res) => {
+    if (!guardWrite(req, res)) return;
+    if (!requireAdmin(req, res)) return;
+    markNoticesRead(dbOf(req), new Date().toISOString());
+    sendOk(res, { belumBaca: 0 });
+  });
+
+  app.get('/api/admin/notifikasi/alur', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive'
+    });
+    res.write(':\n\n');
+    const close = openNoticeStream(res);
+    const beat = setInterval(() => res.write(':\n\n'), 25000);
+    req.on('close', () => {
+      clearInterval(beat);
+      close();
+    });
+  });
+
+  app.get('/api/admin/push', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const config = configOf(req);
+    sendOk(res, { aktif: pushConfigured(config), kunci: pushConfigured(config) ? config.vapidPublic : '' });
+  });
+
+  app.post('/api/admin/push', (req, res) => {
+    if (!guardWrite(req, res)) return;
+    const admin = requireAdmin(req, res);
+    if (!admin) return;
+    if (!pushConfigured(configOf(req))) return sendError(res, 'push_disabled', 409);
+    const saved = savePushSubscription(dbOf(req), admin.id, req.body || {});
+    if (saved.error) return sendError(res, saved.error);
+    sendOk(res, { pesan: 'Notifikasi ponsel disimpan.' });
+  });
+
   app.get('/api/foto/absensi/:id/:phase/:index?', (req, res) => {
-    const employeeSession = sessionRow(req, 'employee');
-    const adminSession = sessionRow(req, 'admin');
-    if (!employeeSession && !adminSession) return sendError(res, 'unauthorized', 401);
+    if (!requireAdmin(req, res)) return;
     const phase = req.params.phase === 'masuk' || req.params.phase === 'pulang' ? req.params.phase : null;
     if (!phase) return sendError(res, 'not_found', 404);
     const photo = repo.attendancePhoto(dbOf(req), Number(req.params.id), phase);
     if (!photo) return sendError(res, 'not_found', 404);
-    if (employeeSession && !adminSession && photo.employeeId !== employeeSession.subject_id) {
-      return sendError(res, 'not_found', 404);
-    }
     const index = req.params.index == null ? null : Number(req.params.index);
     const relative = index == null ? photo.primary : photo.frames[index];
     const full = resolveUpload(configOf(req), relative);

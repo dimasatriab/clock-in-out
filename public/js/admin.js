@@ -51,8 +51,83 @@ const state = {
   absensi: [],
   rekap: [],
   pengaturan: null,
+  notifikasi: [],
+  belumBaca: 0,
   filter: { dari: '', sampai: '', karyawanId: '', lokasiId: '' }
 };
+
+let aliran;
+
+function fotoTombol(item, fase) {
+  const masuk = fase === 'masuk';
+  const ada = masuk ? item.inPhoto : item.outPhoto;
+  if (!ada) return '';
+  const waktu = masuk ? item.clockInAt : item.clockOutAt;
+  const jarak = masuk ? item.inFaceDistance : item.outFaceDistance;
+  const lokasi = masuk ? barisLokasi(item) : (item.outLocationName || barisLokasi(item));
+  const lat = masuk ? item.inLat : item.outLat;
+  const lng = masuk ? item.inLng : item.outLng;
+  const akurasi = masuk ? item.inAccuracy : item.outAccuracy;
+  return `<button type="button" class="foto-tombol" data-id="${item.id}" data-fase="${fase}" data-nama="${esc(item.employeeName)}" data-waktu="${esc(jamPendek(waktu))}" data-tanggal="${esc(tanggalPendek(waktu))}" data-lokasi="${esc(lokasi)}" data-gps="${esc(lat)}, ${esc(lng)}" data-akurasi="${esc(akurasi)}" data-jarak="${esc(jarak)}"><img class="foto" alt="" src="/api/foto/absensi/${item.id}/${fase}"></button>`;
+}
+
+function bukaFoto(tombol) {
+  const dialog = document.querySelector('#lihat-foto');
+  const fase = tombol.dataset.fase === 'pulang' ? 'Pulang' : 'Masuk';
+  document.querySelector('#lihat-gambar').src = `/api/foto/absensi/${tombol.dataset.id}/${tombol.dataset.fase}`;
+  document.querySelector('#lihat-gambar').alt = `Swafoto ${fase} ${tombol.dataset.nama}`;
+  document.querySelector('#lihat-judul').textContent = tombol.dataset.nama;
+  document.querySelector('#lihat-teks').textContent = `${fase} · ${tombol.dataset.tanggal} ${tombol.dataset.waktu} WIB · ${tombol.dataset.lokasi} · GPS ${tombol.dataset.gps} · akurasi ${tombol.dataset.akurasi} m · jarak wajah ${tombol.dataset.jarak}`;
+  dialog.showModal();
+}
+
+function kunciPush(base64) {
+  const pad = '='.repeat((4 - (base64.length % 4)) % 4);
+  const raw = atob(`${base64}${pad}`.replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+}
+
+function perbaruiLonceng() {
+  const jumlah = document.querySelector('#lonceng-jumlah');
+  if (!jumlah) return;
+  jumlah.hidden = state.belumBaca < 1;
+  jumlah.textContent = String(state.belumBaca);
+}
+
+function gambarNotifikasi() {
+  const panel = document.querySelector('#lonceng-panel');
+  if (!panel || panel.hidden) return;
+  const daftar = state.notifikasi.map((item) => {
+    const fase = item.action === 'out' ? 'pulang' : 'masuk';
+    const kata = item.action === 'out' ? 'Pulang' : 'Masuk';
+    return `<button type="button" class="notif-item foto-tombol" data-id="${item.attendanceId}" data-fase="${fase}" data-nama="${esc(item.employeeName)}" data-waktu="${esc(jamPendek(item.clockAt))}" data-tanggal="${esc(tanggalPendek(item.clockAt))}" data-lokasi="${esc(item.locationName)}" data-gps="${esc(item.lat)}, ${esc(item.lng)}" data-akurasi="${esc(item.accuracy)}" data-jarak="${esc(item.faceDistance)}"><img class="foto" alt="" src="/api/foto/absensi/${item.attendanceId}/${fase}"><span><strong>${esc(item.employeeName)}</strong><span class="mini">${kata} · ${esc(jamPendek(item.clockAt))} WIB</span></span></button>`;
+  }).join('');
+  panel.innerHTML = `${daftar || '<p class="mini">Belum ada absen.</p>'}<p class="mini" id="push-baris"></p>`;
+  panel.querySelectorAll('.foto-tombol').forEach((tombol) => {
+    tombol.addEventListener('click', () => bukaFoto(tombol));
+  });
+}
+
+async function muatNotifikasi() {
+  try {
+    const data = await api('/api/admin/notifikasi');
+    state.notifikasi = data.notifikasi;
+    state.belumBaca = data.belumBaca;
+  } catch { /* dasbor tetap jalan */ }
+}
+
+function mulaiAlur() {
+  if (aliran || !window.EventSource) return;
+  aliran = new EventSource('/api/admin/notifikasi/alur');
+  aliran.onmessage = (event) => {
+    if (!event.data) return;
+    const item = JSON.parse(event.data);
+    state.notifikasi = [item, ...state.notifikasi].slice(0, 30);
+    state.belumBaca += 1;
+    perbaruiLonceng();
+    gambarNotifikasi();
+  };
+}
 
 function masuk() {
   aplikasi.innerHTML = `
@@ -105,6 +180,8 @@ function kerangka() {
           ${menu.map(([id, label]) => `<button type="button" data-bagian="${id}" class="${state.bagian === id ? 'aktif' : ''}">${label}</button>`).join('')}
         </nav>
       </aside>
+      <button class="lonceng" id="lonceng" type="button">Lonceng <span id="lonceng-jumlah" ${state.belumBaca ? '' : 'hidden'}>${state.belumBaca}</span></button>
+      <div class="lonceng-panel" id="lonceng-panel" hidden></div>
       <main class="isi">
         <div class="isi-dalam" id="isi"></div>
       </main>
@@ -152,7 +229,7 @@ function gambarHari() {
     <p class="mini">Jam kerja selesai hari ini: ${esc(durasi(ringkas.jam || 0))}. Sesi yang belum ditutup tidak dihitung. <a href="/api/admin/ekspor.csv">Unduh CSV</a></p>
     <div class="tabel-bungkus">
       <table class="tabel">
-        <thead><tr><th>Nama</th><th>Masuk</th><th>Pulang</th><th>Jam</th><th>Status</th></tr></thead>
+        <thead><tr><th>Nama</th><th>Masuk</th><th>Pulang</th><th>Jam</th><th>Foto</th><th>Status</th></tr></thead>
         <tbody>
           ${state.hari.karyawan.map((orang) => `
             <tr class="${kelasBaris(orang)}">
@@ -160,6 +237,7 @@ function gambarHari() {
               <td>${esc(jamPendek(orang.sesi?.[0]?.clockInAt))}</td>
               <td>${esc(jamPendek(orang.record?.clockOutAt))}${orang.auto ? '<div class="mini">otomatis</div>' : ''}</td>
               <td>${esc(durasi(orang.jam || 0))}</td>
+              <td>${orang.record ? `${fotoTombol(orang.record, 'masuk')}${fotoTombol(orang.record, 'pulang')}` : '—'}</td>
               <td>${statusChip(orang)} ${orang.late ? '<span class="chip warn">Terlambat</span>' : ''} ${orang.early ? '<span class="chip">Awal</span>' : ''}</td>
             </tr>`).join('')}
         </tbody>
@@ -208,6 +286,8 @@ function gambarPengaturan() {
       <input name="autoClockOutTime" type="time" value="${esc(atur.autoClockOutTime || '20:00')}" required>
       <label>Batas terlambat</label>
       <input name="lateThreshold" type="time" step="1" value="${esc((atur.lateThreshold || '09:30:00').slice(0, 8))}" required>
+      <label>Simpan foto absen (hari)</label>
+      <input name="photoRetentionDays" type="number" min="1" max="3650" value="${esc(atur.photoRetentionDays ?? 90)}" required>
       <label class="cek"><input name="audioAnnouncements" type="checkbox" ${atur.audioAnnouncements === false ? '' : 'checked'}> Pengumuman suara</label>
       <button class="tombol" style="margin-top:12px" type="submit">Simpan pengaturan</button>
       <p id="atur-pesan" class="mini"></p>
@@ -362,7 +442,7 @@ function gambarRiwayat() {
               <div class="mini">${item.lateMinutes > 0 ? `Terlambat ${item.lateMinutes} menit` : 'Tidak terlambat / tanpa jadwal'}</div>
               ${item.everywhere ? '' : `<div class="mini">GPS ${item.inLat}, ${item.inLng} · akurasi ${item.inAccuracy} m</div>`}
             </div>
-            <img class="foto" alt="Swafoto masuk ${esc(item.employeeName)}" src="/api/foto/absensi/${item.id}/masuk">
+            <div class="baris">${fotoTombol(item, 'masuk')}${fotoTombol(item, 'pulang')}</div>
           </div>
         </article>`).join('') || '<p>Tidak ada absensi pada rentang ini.</p>'}
     </div>`;
@@ -394,6 +474,7 @@ function queryFilter() {
 }
 
 async function muatBagian() {
+  await muatNotifikasi();
   if (state.saya?.perluGantiSandi) return;
   if (state.bagian === 'hari') state.hari = await api('/api/admin/hari-ini');
   if (state.bagian === 'karyawan' || state.bagian === 'lokasi' || state.bagian === 'riwayat' || state.bagian === 'rekap') {
@@ -428,6 +509,9 @@ async function gambar() {
   if (state.bagian === 'rekap') isi.innerHTML = gambarRekap();
   if (state.bagian === 'pengaturan') isi.innerHTML = gambarPengaturan();
   pasangAksi(isi);
+  pasangLonceng();
+  perbaruiLonceng();
+  mulaiAlur();
   if (state.bagian === 'hari') {
     timer = setInterval(async () => {
       state.hari = await api('/api/admin/hari-ini');
@@ -441,7 +525,43 @@ async function gambar() {
   if (state.bagian === 'lokasi') siapkanPeta();
 }
 
+function pasangLonceng() {
+  const tombol = document.querySelector('#lonceng');
+  const panel = document.querySelector('#lonceng-panel');
+  if (!tombol || !panel) return;
+  tombol.addEventListener('click', async () => {
+    panel.hidden = !panel.hidden;
+    if (panel.hidden) return;
+    gambarNotifikasi();
+    if (state.belumBaca > 0) {
+      await api('/api/admin/notifikasi/baca', { method: 'POST', body: {} }).catch(() => {});
+      state.belumBaca = 0;
+      perbaruiLonceng();
+    }
+    const push = await api('/api/admin/push').catch(() => null);
+    const baris = panel.querySelector('#push-baris');
+    if (baris && push?.aktif && window.Notification) {
+      baris.innerHTML = '<button class="tombol-kedua" id="nyala-push" type="button">Nyalakan di ponsel ini</button>';
+      panel.querySelector('#nyala-push').addEventListener('click', async () => {
+        const izin = await Notification.requestPermission();
+        if (izin !== 'granted') return;
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: kunciPush(push.kunci)
+        });
+        const json = sub.toJSON();
+        await api('/api/admin/push', { method: 'POST', body: json });
+        baris.textContent = 'Notifikasi ponsel menyala.';
+      });
+    }
+  });
+}
+
 function pasangAksi(isi) {
+  isi.querySelectorAll('.foto-tombol').forEach((tombol) => {
+    tombol.addEventListener('click', () => bukaFoto(tombol));
+  });
   isi.querySelector('#ganti')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const pin = new FormData(event.currentTarget).get('pin');
@@ -619,6 +739,7 @@ function pasangAksi(isi) {
       detectionCooldownSeconds: Number(data.get('detectionCooldownSeconds')),
       autoClockOutTime: data.get('autoClockOutTime'),
       lateThreshold: late.length === 5 ? `${late}:00` : late,
+      photoRetentionDays: Number(data.get('photoRetentionDays')),
       audioAnnouncements: data.get('audioAnnouncements') === 'on'
     };
     try {

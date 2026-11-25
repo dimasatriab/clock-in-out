@@ -21,6 +21,7 @@ export const PESAN = {
   pose_mismatch: 'Salah satu foto tidak sesuai sudut yang diminta.',
   face_quality: 'Foto terlalu buram atau wajahnya kurang jelas. Ulangi di tempat terang.',
   photo_flat: 'Foto terlalu datar, seperti cetakan atau layar. Gunakan wajah asli.',
+  push_disabled: 'Notifikasi ponsel belum diaktifkan di server.',
   cooldown: 'Absen yang sama terlalu dekat. Tunggu sebentar sebelum mencoba lagi.',
   need_pose_variety: 'Ambil swafoto dari sudut yang sedikit berbeda.',
   different_person: 'Swafoto tampak berasal dari orang yang berbeda.',
