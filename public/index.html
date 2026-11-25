@@ -17,6 +17,8 @@
 <body>
   <main class="kerangka" id="layar"></main>
   <div id="kamera" class="depan">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="kotak-wajah"></canvas>
     <div class="depan-isi">
       <header class="depan-kepala">
         <h1 class="depan-judul"><span id="merek" class="merek">DBLESSMYRA</span><span class="sub">Attendance</span></h1>
@@ -25,29 +27,14 @@
           <button class="tautan-halus" id="kamera-riwayat" type="button">Status</button>
         </div>
       </header>
-      <div class="depan-pusat">
-        <div class="depan-grup">
-          <div class="lingkar">
-            <video id="video" autoplay muted playsinline></video>
-            <canvas id="kotak-wajah"></canvas>
-          </div>
-          <p class="depan-status">
-            <span id="lampu" class="titik siap"></span>
-            <span id="kamera-status">Ready</span>
-          </p>
-        </div>
-      </div>
-      <div class="depan-kaki">
-        <div id="konfirmasi" class="konfirmasi" hidden>
-          <p id="konfirmasi-nama" class="nama-konfirmasi"></p>
-          <p id="konfirmasi-hitung" class="mini"></p>
-          <button id="konfirmasi-masuk" class="tombol-masuk" type="button">Clock In</button>
-          <button id="konfirmasi-pulang" class="tombol-pulang" type="button">Clock Out</button>
-        </div>
+      <div class="depan-lembar">
+        <p class="depan-status">
+          <span id="lampu" class="titik siap"></span>
+          <span id="kamera-status">Ready</span>
+        </p>
         <button class="tombol-garis" id="kamera-pin" type="button">login with pin</button>
       </div>
     </div>
-    <div id="pita" class="pita" hidden></div>
   </div>
   <script type="module" src="/js/employee.js"></script>
 </body>

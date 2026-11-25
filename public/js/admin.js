@@ -821,7 +821,6 @@ function gambarLingkaran() {
 }
 
 function ambilDepan() {
-  const cincin = document.querySelector('.cincin');
   const ambil = document.querySelector('#kamera-ambil');
   const batal = document.querySelector('#kamera-batal');
   const signal = new AbortController();
@@ -831,7 +830,6 @@ function ambilDepan() {
       signal.abort();
       ambil.removeEventListener('click', onAmbil);
       batal.removeEventListener('click', onBatal);
-      cincin.classList.remove('siap');
     };
     const simpan = (blob) => {
       if (selesai || !blob) return;

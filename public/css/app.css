@@ -221,26 +221,13 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 }
 .kamera[hidden] { display: none; }
 .kamera video {
-  position: absolute;
+  position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   transform: scaleX(-1);
 }
-.cincin {
-  position: absolute;
-  left: 50%;
-  top: 38%;
-  width: min(72vw, 300px);
-  height: min(92vw, 380px);
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.95);
-  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.28);
-  pointer-events: none;
-}
-.cincin.siap { border-color: #34c759; }
 .lembar {
   position: absolute;
   left: 12px;
@@ -264,21 +251,40 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   position: fixed;
   inset: 0;
   z-index: 30;
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-  color: #111;
-  overflow: auto;
+  background: #000;
+  color: #fff;
+  overflow: hidden;
 }
 .depan[hidden] { display: none !important; }
+.depan video,
+.depan #kotak-wajah {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.depan video {
+  object-fit: cover;
+  transform: scaleX(-1);
+  background: #000;
+  z-index: 0;
+}
+.depan #kotak-wajah {
+  z-index: 1;
+  pointer-events: none;
+}
 .depan-isi {
-  width: min(430px, 100%);
-  flex: 1 0 auto;
-  margin: 0 auto;
+  position: relative;
+  z-index: 2;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  padding: calc(28px + env(safe-area-inset-top)) 28px calc(22px + env(safe-area-inset-bottom));
+  justify-content: space-between;
+  padding: calc(18px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  background: none;
+  pointer-events: none;
 }
+.depan-isi button, .depan-isi a { pointer-events: auto; }
 .depan-kepala {
   display: flex;
   justify-content: space-between;
@@ -287,7 +293,6 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 }
 .depan-tautan { display: flex; gap: 16px; align-items: flex-start; }
 #tautan-admin[hidden] { display: none !important; }
-.depan.sedang-konfirmasi #tautan-admin { display: none; }
 .depan-judul {
   margin: 0;
   flex: 1;
@@ -295,6 +300,7 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   font-weight: 500;
   line-height: 1.15;
   text-align: left;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 .depan-judul .merek {
   display: block;
@@ -302,6 +308,7 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   font-weight: 500;
   letter-spacing: 0.28em;
   text-transform: uppercase;
+  color: #fff;
 }
 .depan-judul .sub {
   display: block;
@@ -309,7 +316,7 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   font-size: 13px;
   font-weight: 400;
   letter-spacing: 0.12em;
-  color: #8e8e93;
+  color: rgba(255, 255, 255, 0.78);
 }
 .tautan-halus {
   margin-top: 6px;
@@ -322,56 +329,21 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.depan-pusat {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 36px 0 20px;
-}
-.depan-grup {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 26px;
-}
-.lingkar {
-  position: relative;
-  width: min(62vw, 260px);
-  height: min(62vw, 260px);
-  border: 1px solid #1c1c1e;
-  border-radius: 50%;
-  overflow: hidden;
-  background: #fafafa;
-  flex: 0 0 auto;
-}
-.depan.sedang-konfirmasi .lingkar {
-  width: min(42vw, 180px);
-  height: min(42vw, 180px);
-}
-.lingkar canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.lingkar video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transform: scaleX(-1);
-  background: #fafafa;
+.depan .tautan-halus { color: rgba(255, 255, 255, 0.9); }
+.depan-lembar {
+  pointer-events: auto;
+  padding: 14px;
+  border-radius: 22px;
+  background: rgba(28, 28, 30, 0.55);
+  backdrop-filter: saturate(160%) blur(18px);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
 }
 .depan-status {
-  align-self: stretch;
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  margin: 0;
-  min-height: 44px;
+  margin: 0 0 12px;
+  color: #fff;
   font-size: 16px;
   font-weight: 600;
   line-height: 1.35;
@@ -388,51 +360,22 @@ input:focus, select:focus { outline: 2px solid rgba(0, 122, 255, 0.35); }
 .titik.siap, .titik.berhasil { background: var(--ok); }
 .titik.pindai { background: var(--warn); }
 .titik.gagal { background: var(--bad); }
-.depan-kaki { margin-top: 8px; }
 .tombol-garis {
   width: 100%;
   min-height: 52px;
-  border: 1px solid rgba(60, 60, 67, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 16px;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.38);
   box-shadow: none;
-  color: #8e8e93;
+  color: #fff;
   font-size: 15px;
   font-weight: 400;
   letter-spacing: 0.04em;
   text-align: center;
   padding: 0 18px;
 }
-.tombol-garis:active { background: rgba(60, 60, 67, 0.06); }
-.tombol-garis:focus-visible { outline: 2px solid rgba(60, 60, 67, 0.28); outline-offset: 3px; }
-.depan.sedang-konfirmasi .tombol-garis { display: none; }
-.konfirmasi { display: flex; flex-direction: column; gap: 8px; }
-.konfirmasi[hidden] { display: none !important; }
-.nama-konfirmasi { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.4px; }
-.tombol-masuk, .tombol-pulang {
-  width: 100%;
-  min-height: 58px;
-  border-radius: 2px;
-  font-size: 22px;
-  font-weight: 700;
-}
-.tombol-masuk { background: #34c759; color: #111; border: 1.5px solid #111; }
-.tombol-pulang { background: #fff; color: #ff3b30; border: 1.5px solid #ff3b30; }
-.pita {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 40;
-  padding: 22px 16px calc(22px + env(safe-area-inset-bottom));
-  color: #fff;
-  font-size: 22px;
-  font-weight: 700;
-  text-align: center;
-}
-.pita[hidden] { display: none !important; }
-.pita.masuk { background: #248a3d; }
-.pita.pulang { background: #ff3b30; }
+.tombol-garis:active { background: rgba(255, 255, 255, 0.16); }
+.tombol-garis:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.7); outline-offset: 3px; }
 .tabel-bungkus { overflow-x: auto; margin-top: 12px; }
 .tabel { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tabel th, .tabel td { text-align: left; padding: 10px 8px; border-bottom: 0.5px solid var(--line); vertical-align: top; }

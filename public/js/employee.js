@@ -91,7 +91,7 @@ async function tampilBeranda(pesanAwal) {
       <p class="mini">${data.karyawan.shiftStart ? `Jadwal masuk ${esc(data.karyawan.shiftStart)} · toleransi ${esc(data.karyawan.graceMinutes)} menit` : 'Tidak ada jam masuk tetap.'}</p>
       <p class="mini">Wajah tersimpan: ${esc(data.karyawan.faceSampleCount)} foto. ${data.karyawan.faceSampleCount < 1 ? 'Minta admin mengambil foto depan.' : ''}</p>
       <div id="lokasi-status" class="pesan">Mengecek lokasi…</div>
-      <button class="tombol" id="absen" type="button" style="margin-top:14px">Kembali ke kamera</button>
+      <button class="tombol" id="absen" type="button" style="margin-top:14px">${terbuka ? 'Clock Out' : 'Clock In'}</button>
       <button class="tombol-kedua" id="segar" type="button" style="margin-top:8px">Perbarui lokasi</button>
     </section>
     <section class="kartu">
@@ -130,9 +130,10 @@ async function tampilBeranda(pesanAwal) {
     await api('/api/karyawan/keluar', { method: 'POST', body: {} });
     await layarDepan();
   });
-  if (pesanAwal) {
+  if (typeof pesanAwal === 'string') pesanAwal = { baik: true, teks: pesanAwal };
+  if (pesanAwal?.teks) {
     const kotak = layar.querySelector('#lokasi-status');
-    kotak.className = pesanAwal.baik ? 'pesan baik' : 'pesan buruk';
+    kotak.className = pesanAwal.baik === false ? 'pesan buruk' : 'pesan baik';
     kotak.textContent = pesanAwal.teks;
   } else {
     cek();
@@ -175,8 +176,8 @@ function gambarKotak(box) {
   const oy = (canvas.height - video.videoHeight * scale) / 2;
   const x = canvas.width - (ox + (box.x + box.width) * scale);
   const y = oy + box.y * scale;
-  ctx.strokeStyle = '#111';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 4;
   ctx.strokeRect(x, y, box.width * scale, box.height * scale);
 }
 
@@ -186,49 +187,6 @@ function ucapkan(teks, aktif) {
   suara.lang = 'id-ID';
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(suara);
-}
-
-function tungguPilihan(nama, detik, signal) {
-  const panel = document.querySelector('#konfirmasi');
-  const hitung = document.querySelector('#konfirmasi-hitung');
-  const masukBtn = document.querySelector('#konfirmasi-masuk');
-  const pulangBtn = document.querySelector('#konfirmasi-pulang');
-  document.querySelector('#konfirmasi-nama').textContent = nama;
-  panel.hidden = false;
-  kamera.classList.add('sedang-konfirmasi');
-  setStatus('Confirming', 'scanning');
-  let sisa = detik;
-  hitung.textContent = `${sisa}s`;
-  return new Promise((resolve) => {
-    const selesai = (nilai) => {
-      clearInterval(timer);
-      masukBtn.removeEventListener('click', pilihMasuk);
-      pulangBtn.removeEventListener('click', pilihPulang);
-      signal?.removeEventListener('abort', batal);
-      panel.hidden = true;
-      kamera.classList.remove('sedang-konfirmasi');
-      resolve(nilai);
-    };
-    const pilihMasuk = () => selesai('in');
-    const pilihPulang = () => selesai('out');
-    const batal = () => selesai('abort');
-    const timer = setInterval(() => {
-      sisa -= 1;
-      hitung.textContent = `${Math.max(sisa, 0)}s`;
-      if (sisa <= 0) selesai('timeout');
-    }, 1000);
-    masukBtn.addEventListener('click', pilihMasuk);
-    pulangBtn.addEventListener('click', pilihPulang);
-    signal?.addEventListener('abort', batal);
-  });
-}
-
-function tampilPita(aksi, nama, waktu) {
-  const pita = document.querySelector('#pita');
-  pita.hidden = false;
-  pita.className = `pita ${aksi === 'out' ? 'pulang' : 'masuk'}`;
-  const kata = aksi === 'out' ? 'Clock Out' : 'Clock In';
-  pita.textContent = `${kata} Confirmed — ${nama} | ${waktu}`;
 }
 
 async function layarDepan() {
@@ -264,7 +222,6 @@ async function layarDepan() {
 
 async function pindai(signal, token, awal) {
   const pengaturan = awal || await api('/api/kiosk/pengaturan').catch(() => ({
-    confirmationTimeoutSeconds: 10,
     audioAnnouncements: true
   }));
   while (!signal.aborted && masihLayar(token)) {
@@ -319,11 +276,18 @@ async function pindai(signal, token, awal) {
     const aksi = kenali.sesiTerbuka ? 'out' : 'in';
     form.set('action', aksi);
     form.set('token', kenali.token);
+    setStatus(aksi === 'out' ? 'Mencatat clock out…' : 'Mencatat clock in…', 'scanning');
     try {
       const hasil = await api('/api/karyawan/absen', { method: 'POST', form });
+      if (signal.aborted || !masihLayar(token)) return;
       ucapkan(aksi === 'out' ? `Absen pulang, ${kenali.nama}` : `Absen masuk, ${kenali.nama}`, pengaturan.audioAnnouncements);
+      const pesan = hasil.pesan;
       tutupKamera();
-      await tampilBeranda(hasil.pesan);
+      try {
+        await tampilBeranda({ baik: true, teks: pesan });
+      } catch {
+        gambarMasuk();
+      }
       return;
     } catch (error) {
       if (signal.aborted || !masihLayar(token)) return;
