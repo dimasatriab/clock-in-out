@@ -2,8 +2,6 @@
 
 Absensi karyawan untuk toko, unit sewa, dan rumah. Karyawan absen dari browser ponsel (bisa dipasang seperti aplikasi). Setiap absen memakai kamera depan, pemeriksaan wajah, dan lokasi GPS. Semua jam dicatat dalam **WIB (Asia/Jakarta)**.
 
-Teks antarmuka berbahasa Indonesia. Tiga kelompok usaha: **Toko DBLESS MYRA**, **Unit hostbydims**, dan **Rumah**.
-
 ## Coba di komputer
 
 Perlu Node.js 22.
