@@ -1,0 +1,25 @@
+{
+  "name": "hadir",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Absensi karyawan dengan swafoto langsung, pencocokan wajah, dan geofence.",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test --experimental-test-isolation=process tests/*.test.js",
+    "prepare-assets": "node scripts/prepare-assets.js"
+  },
+  "dependencies": {
+    "@fontsource/plus-jakarta-sans": "^5.3.0",
+    "@napi-rs/canvas": "^1.1.1",
+    "@vladmandic/face-api": "^1.7.15",
+    "express": "^4.22.3",
+    "jpeg-js": "^0.4.4",
+    "leaflet": "^1.9.4",
+    "multer": "^2.5.0",
+    "web-push": "^3.6.7"
+  }
+}

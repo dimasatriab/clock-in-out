@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#f2f2f7">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Hadir — Dasbor admin</title>
+  <link rel="icon" href="/icons/favicon.png">
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+</head>
+<body>
+  <div id="aplikasi"></div>
+  <dialog id="lihat-foto">
+    <div class="dialog">
+      <img id="lihat-gambar" alt="">
+      <h2 id="lihat-judul"></h2>
+      <p id="lihat-teks"></p>
+      <form method="dialog"><button class="tombol" value="tutup">Tutup</button></form>
+    </div>
+  </dialog>
+  <dialog id="konfirmasi-hapus">
+    <form method="dialog">
+      <h2 id="hapus-judul"></h2>
+      <p id="hapus-teks"></p>
+      <div class="baris">
+        <button class="tombol-kedua" value="batal" type="submit">Batal</button>
+        <button class="tombol-hapus dialog-hapus" value="hapus" type="submit">Hapus</button>
+      </div>
+    </form>
+  </dialog>
+  <div id="kamera" class="kamera" hidden>
+    <video id="video" autoplay muted playsinline></video>
+    <div class="lembar">
+      <p id="kamera-status">Menyiapkan kamera…</p>
+      <div class="baris">
+        <button class="tombol" id="kamera-ambil" type="button">Ambil sekarang</button>
+        <button class="tombol-kedua" id="kamera-batal" type="button">Batal</button>
+      </div>
+    </div>
+  </div>
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="/js/admin.js"></script>
+</body>
+</html>
